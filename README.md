@@ -1,27 +1,14 @@
-# AnotherDSHL (ADL)
+# AnotherDeepSeekHarnessLauncher
 
 **Yet Another Deepseek Harness Launcher** 
-一个使用 WinUI 3 编写的 Windows 桌面启动器。窗口使用原生 NavigationView 侧栏和透明标题栏区域，提供启动、工作区、插件、日志与设置页面。支持亚克力半透明模糊和 Mica 两种窗口材质，随心你的选择
+一个使用 WinUI 3 制作的 Windows 下的DeepSeek Harness图形化桌面启动器
+窗口使用原生 NavigationView 侧栏和透明标题栏区域，帮助你快捷上手
 
-## 功能
-
-- 选择并记住 Harness 的默认工作目录。
-- 检测 Node.js 版本和 npx；要求 Node.js 22.19+ 或 24+。
-- Node.js 缺失、版本过低或缺少 npx 时，可从工作区或主页进入修复对话框，使用 WinGet 交互安装 Node.js LTS，或打开官方下载安装页。
-- 也可手动选择本机 `node.exe`；ADL 会验证版本、查找同目录的 `npx.cmd`，并保存路径供后续启动使用。
-- 本机未检测到 DSH 包时显示 ADL 标志；检测到本机缓存包后显示 DeepSeek Harness 官方矢量标志和缓存版本。
-- 启动 DSH 时也会切换为官方标志，并在窗口左上角显示无背景 ADL 标志；黑底、米白底 SVG 变体由用户提供的 `Assets/AppIcon.svg` 生成。
-- 主页显示具体环境问题；启动时显示进度和服务状态。
-- 插件中心默认读取 [DeepSeek Harness 官方社区插件讨论区](https://github.com/deepseek-ai/deepseek-harness/discussions/categories/show-your-plugins)的近期作品、DeepSeek 官方发布的 bundle，以及独立社区维护的 [1024Store 目录](https://deepseek1024.com/api/v1/registry)（当前接口提供至多 500 条快照）。支持搜索、来源和类型筛选、GitHub Star 热门排序、详情和 DSH CLI 安装。其他运行模式的核心 bundle 仅供查看。
-- 可添加自定义 HTTPS 第三方 JSON 目录；已安装列表继续读取 DSH Web profile。社区帖子和独立目录中的作品由各自作者发布，不代表 DeepSeek 审核或推荐。
-- 从 npm 获取 DSH 版本列表，选择默认发布版或锁定具体版本；下次启动使用相应 `@deepseek-ai/dsh@版本` 包。
-- 运行官方 Web 入口：`npx --yes @deepseek-ai/dsh web --no-open --port 3080`（端口可配置）。
-- 识别已在运行的本机 DSH；运行时首页按钮变为“停止 Harness”，仅在明确点击后停止对应服务进程。
-- 等待本地服务就绪后打开浏览器，显示进程输出和分阶段进度。
-- `--demo` 提供固定示例数据和上一步/下一步控制，用于安全录制演示画面。
-- 工作目录保存于 `%LOCALAPPDATA%\AnotherDSHL\settings.json`。
-
-首次启动 Harness 时，npx 需要联网获取官方包。ADL 不内置 DeepSeek Harness，也不处理 API 密钥；这些配置在 Harness 自身界面中完成。
+## 简介
+ADL
+首次启动 Harness 时，npx 需要联网获取官方包
+ADL `不内置` DeepSeek Harness，`也不处理 API 密钥`；
+这些配置在 Harness 自身界面中完成，未来或许会在APP内支持直接的预设置
 
 自定义目录 JSON 示例：`{"plugins":[{"name":"示例插件","owner":"author","description":"功能说明","category":"tools","icon":"https://example.com/icon.png","installSpec":"@author/dsh-example","url":"https://github.com/author/dsh-example"}]}`。`installSpec` 支持 npm 包名或 `github:owner/repo`；安装前会显示确认框。目录也可使用 `description.zh/en` 和 `install` 字段（`dsh plugin --profile web add <spec>`）。缺少图标时显示通用插件图标。
 
@@ -48,7 +35,7 @@ dotnet build AnotherDSHL.csproj -c Debug -p:Platform=x64
 & ".\bin\x64\Debug\net8.0-windows10.0.26100.0\win-x64\AnotherDSHL.exe" --demo --demo-clean --demo-step=7
 ```
 
-演示模式共 10 幕，依次展示启动、资源准备、下载、Web 服务启动、就绪、工作区与版本、插件列表与详情、设置和关于页。普通 `--demo` 模式可手动切换步骤；`--demo-clean` 用于无控制条画面采集。
+演示模式共 10 幕。点击“启动 Harness”后，资源检查、虚拟下载百分比、Web 服务启动和绿色完成提示会自动播放；全程不下载资源或启动真实服务，完成提示几秒后自动消失。运行状态下点击“停止 Harness”会回到未启动状态。窗口获得焦点时支持通过方向键或 PageUp / PageDown 手动切幕；普通 `--demo` 模式也提供上一步/下一步按钮。手动切换会取消自动播放。`--demo-clean` 隐藏控制条，适合以正常小窗尺寸采集画面。
 
 ## 项目结构
 

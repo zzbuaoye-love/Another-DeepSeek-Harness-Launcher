@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using AnotherDSHL.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Storage.Pickers;
 
@@ -27,6 +28,7 @@ public sealed partial class MainPage : Page
     private readonly bool _demoClean = Environment.GetCommandLineArgs().Any(arg =>
         arg.Equals("--demo-clean", StringComparison.OrdinalIgnoreCase));
     private int _demoStep;
+    private int _demoPlaybackSessionId;
     private Process? _service;
     private string _webSessionUrl = LauncherSettings.LoadLastWebUrl();
     private int _configuredWebPort = LauncherSettings.LoadWebPort();
@@ -63,6 +65,10 @@ public sealed partial class MainPage : Page
     public MainPage()
     {
         InitializeComponent();
+        IsTabStop = true;
+        Loaded += (s, e) => Focus(FocusState.Programmatic);
+        PointerPressed += (s, e) => Focus(FocusState.Programmatic);
+        AddHandler(KeyDownEvent, new KeyEventHandler(DemoNavigation_KeyDown), true);
         if (_demoMode) _selectedDshVersion = "0.1.5-rc.3";
         _activeWebPort = _configuredWebPort;
         WebPortTextBox.Text = _configuredWebPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -149,9 +155,29 @@ public sealed partial class MainPage : Page
     private void DemoNext_Click(object sender, RoutedEventArgs e) =>
         SetDemoStep((_demoStep + 1) % DemoScenes.Length);
 
-    private void SetDemoStep(int step)
+    private void DemoNavigation_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (!_demoMode) return;
+        if (FocusManager.GetFocusedElement(XamlRoot) is TextBox) return;
+        switch (e.Key)
+        {
+            case Windows.System.VirtualKey.Right:
+            case Windows.System.VirtualKey.PageDown:
+                DemoNext_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+                break;
+            case Windows.System.VirtualKey.Left:
+            case Windows.System.VirtualKey.PageUp:
+                DemoPrevious_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void SetDemoStep(int step, bool autoPlayback = false)
+    {
+        if (!_demoMode) return;
+        if (!autoPlayback) ++_demoPlaybackSessionId;
         _demoStep = Math.Clamp(step, 0, DemoScenes.Length - 1);
         ++_tipsSessionId;
         _launchTipsActive = false;
@@ -170,8 +196,8 @@ public sealed partial class MainPage : Page
         LaunchProgress.Visibility = _starting ? Visibility.Visible : Visibility.Collapsed;
         ServiceStatusText.Text = _demoStep switch
         {
-            1 => "正在检查启动资源…", 2 => "正在下载资源…",
-            3 => "正在启动 Web 服务…", >= 4 => "Harness 正在运行 · 端口 3080（演示）",
+            1 => "正在模拟检查启动资源…", 2 => "正在模拟下载资源…",
+            3 => "正在模拟启动 Web 服务…", >= 4 => "Harness 正在运行 · 端口 3080（演示）",
             _ => "本地服务未启动（演示）"
         };
         UpdateBranding();
@@ -185,14 +211,37 @@ public sealed partial class MainPage : Page
         };
         switch (_demoStep)
         {
-            case 1: ShowLaunchStepTip("准备启动", "正在检查 DSH 资源", 12); break;
-            case 2: ShowLaunchStepTip("下载资源", "资源下载 63%", 48); break;
-            case 3: ShowLaunchStepTip("启动 Web 服务", "等待本机端口 3080 响应", 82); break;
-            case 4: _ = ShowLaunchCompletedTipAsync(hold: true); break;
+            case 1: ShowLaunchStepTip("准备启动", "模拟检查 DSH 资源", 12); break;
+            case 2: ShowLaunchStepTip("下载资源", "虚拟资源下载 0%", 30); break;
+            case 3: ShowLaunchStepTip("启动 Web 服务", "模拟启动本机服务", 82); break;
+            case 4: _ = ShowLaunchCompletedTipAsync(hold: !autoPlayback); break;
             case 7:
                 CatalogList.SelectedItem = _catalogItems.First(item => item.Name == "dsh-web");
                 break;
         }
+    }
+
+    private async Task PlayDemoStartupAsync()
+    {
+        var session = ++_demoPlaybackSessionId;
+        SetDemoStep(1, autoPlayback: true);
+        await Task.Delay(700);
+        if (session != _demoPlaybackSessionId) return;
+
+        SetDemoStep(2, autoPlayback: true);
+        foreach (var percent in new[] { 10, 25, 42, 63, 81, 100 })
+        {
+            await Task.Delay(340);
+            if (session != _demoPlaybackSessionId) return;
+            ShowLaunchStepTip("下载资源", $"虚拟资源下载 {percent}%", 30 + percent * 0.45);
+        }
+
+        await Task.Delay(400);
+        if (session != _demoPlaybackSessionId) return;
+        SetDemoStep(3, autoPlayback: true);
+        await Task.Delay(950);
+        if (session != _demoPlaybackSessionId) return;
+        SetDemoStep(4, autoPlayback: true);
     }
 
     public void TogglePane() => ShellNavigation.IsPaneOpen = !ShellNavigation.IsPaneOpen;
@@ -1129,7 +1178,10 @@ public sealed partial class MainPage : Page
     {
         if (_demoMode)
         {
-            SetDemoStep((_demoStep + 1) % DemoScenes.Length);
+            if (_serviceReady)
+                SetDemoStep(0);
+            else if (!_starting)
+                await PlayDemoStartupAsync();
             return;
         }
         if (_stoppingService) return;

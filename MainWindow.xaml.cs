@@ -19,6 +19,18 @@ public sealed partial class MainWindow : Window
 
         AppWindow.SetIcon("Assets/AppIcon.ico");
         AppWindow.Resize(new Windows.Graphics.SizeInt32(760, 520));
+
+        Activated += (s, e) =>
+        {
+            if (e.WindowActivationState != WindowActivationState.Deactivated)
+            {
+                if (RootFrame.Content is Control control)
+                {
+                    control.Focus(FocusState.Programmatic);
+                }
+            }
+        };
+
         RootFrame.Navigate(typeof(MainPage));
     }
 
