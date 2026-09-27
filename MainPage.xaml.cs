@@ -4,6 +4,8 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.IO;
+using System.Runtime.InteropServices.WindowsRuntime;
 using AnotherDSHL.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -169,6 +171,43 @@ public sealed partial class MainPage : Page
         {
             SetDemoStep(6);
             PluginTab_Click(PluginSourcesTab, new RoutedEventArgs());
+        }
+
+        var captureArg = Environment.GetCommandLineArgs().FirstOrDefault(arg =>
+            arg.StartsWith("--demo-capture=", StringComparison.OrdinalIgnoreCase))?[15..];
+        if (!string.IsNullOrWhiteSpace(captureArg))
+        {
+            var fullPath = Path.GetFullPath(captureArg);
+            DispatcherQueue.TryEnqueue(async () =>
+            {
+                await Task.Delay(900);
+                try
+                {
+                    var rtb = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
+                    await rtb.RenderAsync(this);
+                    var pixels = await rtb.GetPixelsAsync();
+                    Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                    if (File.Exists(fullPath)) File.Delete(fullPath);
+                    using var stream = File.OpenWrite(fullPath);
+                    var encoder = await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(
+                        Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId, stream.AsRandomAccessStream());
+                    encoder.SetPixelData(
+                        Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,
+                        Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,
+                        (uint)rtb.PixelWidth,
+                        (uint)rtb.PixelHeight,
+                        96, 96,
+                        pixels.ToArray());
+                    await encoder.FlushAsync();
+                }
+                catch
+                {
+                }
+                finally
+                {
+                    Environment.Exit(0);
+                }
+            });
         }
     }
 
