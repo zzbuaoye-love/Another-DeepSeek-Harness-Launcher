@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "AnotherDSHL (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "AnotherDSHL (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
