@@ -40,6 +40,8 @@ BundleArtifacts/
 
 # Publish output
 publish/
+dist/
+*.zip
 *.pubxml
 PublishScripts/
 

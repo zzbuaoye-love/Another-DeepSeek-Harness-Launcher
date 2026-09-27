@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -100,7 +101,8 @@ public sealed partial class MainPage : Page
                 AutoNodeRadio.IsChecked = true;
             UpdateNodeModeUi();
             _nodeModeReady = true;
-            AboutVersionText.Text = $"版本 {typeof(MainPage).Assembly.GetName().Version?.ToString(3) ?? "未知"}";
+            var infoVer = typeof(MainPage).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            AboutVersionText.Text = $"版本 {(!string.IsNullOrWhiteSpace(infoVer) ? infoVer : typeof(MainPage).Assembly.GetName().Version?.ToString(3) ?? "0.0.1 Beta")}";
             ShellNavigation.SelectedItem = HomeItem;
             if (_demoMode)
             {
