@@ -147,6 +147,29 @@ public sealed partial class MainPage : Page
             arg.StartsWith("--demo-step=", StringComparison.OrdinalIgnoreCase));
         var startStep = startArg is not null && int.TryParse(startArg[12..], out var parsed) ? parsed : 0;
         SetDemoStep(startStep);
+
+        var demoViewArg = Environment.GetCommandLineArgs().FirstOrDefault(arg =>
+            arg.StartsWith("--demo-view=", StringComparison.OrdinalIgnoreCase))?[12..].ToLowerInvariant();
+        if (demoViewArg is "workspace-dsh" or "version")
+        {
+            SetDemoStep(5);
+            EnvironmentView.Loaded += (_, _) => EnvironmentView.ChangeView(null, 280, null, true);
+            DispatcherQueue.TryEnqueue(async () =>
+            {
+                await Task.Delay(250);
+                EnvironmentView.ChangeView(null, 280, null, true);
+            });
+        }
+        else if (demoViewArg is "plugins-installed" or "installed")
+        {
+            SetDemoStep(6);
+            PluginTab_Click(InstalledPluginsTab, new RoutedEventArgs());
+        }
+        else if (demoViewArg is "plugins-sources" or "sources" or "catalog-sources")
+        {
+            SetDemoStep(6);
+            PluginTab_Click(PluginSourcesTab, new RoutedEventArgs());
+        }
     }
 
     private void DemoPrevious_Click(object sender, RoutedEventArgs e) =>
