@@ -69,11 +69,12 @@ public static class PackForgeMarketService
     {
         if (!pack.CanDownload)
             throw new InvalidDataException("此条目不支持通过管理器打开。");
+        var existing = await TryGetVerifiedLocalPathAsync(pack, cancellationToken);
+        if (existing is not null) return existing;
         var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "AnotherDSHL", "Packs");
         Directory.CreateDirectory(folder);
-        var filename = $"{SafeName(pack.Owner)}.{SafeName(pack.Repo)}-{SafeName(pack.Version)}.dspack";
-        var destination = Path.Combine(folder, filename);
+        var destination = GetLocalPath(pack);
         var temporary = destination + ".download";
         try
         {
@@ -111,6 +112,23 @@ public static class PackForgeMarketService
         {
             if (File.Exists(temporary)) File.Delete(temporary);
         }
+    }
+
+    public static string GetLocalPath(MarketPack pack) => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AnotherDSHL", "Packs",
+        $"{SafeName(pack.Owner)}.{SafeName(pack.Repo)}-{SafeName(pack.Version)}.dspack");
+
+    public static async Task<string?> TryGetVerifiedLocalPathAsync(MarketPack pack,
+        CancellationToken cancellationToken = default)
+    {
+        if (!pack.CanDownload) return null;
+        var path = GetLocalPath(pack);
+        if (!File.Exists(path)) return null;
+        await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        if (file.Length != pack.Size) return null;
+        var hash = await SHA256.HashDataAsync(file, cancellationToken);
+        return Convert.ToHexString(hash).Equals(pack.Sha256, StringComparison.OrdinalIgnoreCase) ? path : null;
     }
 
     private static string SafeName(string value) => Regex.Replace(value, "[^A-Za-z0-9_.-]", "-");

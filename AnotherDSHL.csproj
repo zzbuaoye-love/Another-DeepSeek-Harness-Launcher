@@ -22,7 +22,7 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Product>AnotherDSHL</Product>
     <Description>Another DeepSeek Harness Launcher</Description>
-    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**\*</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**\*;installer\**\*</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

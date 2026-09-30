@@ -213,6 +213,23 @@ internal static class LauncherSettings
 
     public static void SaveLaunchMode(string mode) => SaveValue("LaunchMode", mode);
 
+    public static string LoadPackForgePath()
+    {
+        try
+        {
+            if (File.Exists(SettingsPath))
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(SettingsPath));
+                if (document.RootElement.TryGetProperty("PackForgePath", out var path))
+                    return path.GetString() ?? "";
+            }
+        }
+        catch { }
+        return "";
+    }
+
+    public static void SavePackForgePath(string path) => SaveValue("PackForgePath", path);
+
     private static void SaveValue(string key, string value)
     {
         try

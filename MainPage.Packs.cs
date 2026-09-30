@@ -16,6 +16,9 @@ public sealed partial class MainPage
     private string? _packProfilePath;
     private string? _packOutputPath;
     private bool _packExporting;
+    private bool _packOpening;
+    private string _packManagerPath = LauncherSettings.LoadPackForgePath();
+    private string? _packFilePath;
 
     private async Task RefreshPacksAsync()
     {
@@ -80,10 +83,21 @@ public sealed partial class MainPage
             ? $"{pack.ProfileCount} 个 Profile · {pack.BundleCount} 个 Bundle · {pack.DepCount} 个依赖"
             : $"{pack.BundleCount} 个 Bundle · {pack.DepCount} 个依赖";
         DownloadPackButton.IsEnabled = pack.CanDownload && !_packDownloading && !_demoMode;
+        UpdatePackFileUi();
         PackActionStatusText.Text = pack.CanDownload
-            ? "下载后会核对大小和 SHA-256，再通过 .dspack 文件关联打开管理器。"
+            ? "下载并校验后打开 PackForge 管理器；已下载的包可直接重新打开。"
             : pack.IsDspack ? "此条目缺少有效的大小或 SHA-256 校验信息，请到仓库查看安装方式。"
                 : "此条目是历史格式，请到仓库查看安装方式。";
+    }
+
+    private void UpdatePackFileUi()
+    {
+        var path = _selectedPack is { } pack ? PackForgeMarketService.GetLocalPath(pack) : null;
+        _packFilePath = path is not null && File.Exists(path) ? path : null;
+        ShowPackFileButton.Visibility = _packFilePath is null ? Visibility.Collapsed : Visibility.Visible;
+        PackDownloadedPathText.Visibility = ShowPackFileButton.Visibility;
+        PackDownloadedPathText.Text = _packFilePath is null ? "" : $"已下载文件：{_packFilePath}";
+        DownloadPackButton.Content = _packFilePath is null ? "下载并交给管理器安装" : "打开已下载包";
     }
 
     private void BackToPacks_Click(object sender, RoutedEventArgs e)
@@ -112,37 +126,93 @@ public sealed partial class MainPage
 
     private async void DownloadPackButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_demoMode || _packDownloading || _selectedPack is not { } pack || !pack.CanDownload) return;
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = "下载整合包",
-            Content = $"{pack.Title} v{pack.Version}\n作者：{pack.Author}\n大小：{pack.Size:N0} 字节\n\n下载并校验后，将交给 DSH PackForge 管理器查看和安装。安装操作在管理器中确认。",
-            PrimaryButtonText = "下载",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Close
-        };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (_demoMode || _packDownloading || _packOpening || _selectedPack is not { } pack || !pack.CanDownload) return;
         _packDownloading = true;
         DownloadPackButton.IsEnabled = false;
-        PackActionStatusText.Text = "正在下载并校验整合包…";
         try
         {
-            var path = await PackForgeMarketService.DownloadVerifiedAsync(pack);
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-            PackActionStatusText.Text = "已通过大小与 SHA-256 校验，已交给系统的 .dspack 文件关联。";
-            AppendLog($"[ADL] 整合包校验完成：{pack.Owner}/{pack.Repo} v{pack.Version}");
+            PackActionStatusText.Text = "正在校验本地整合包…";
+            var path = await PackForgeMarketService.TryGetVerifiedLocalPathAsync(pack);
+            if (path is null)
+            {
+                var dialog = new ContentDialog
+                {
+                    XamlRoot = XamlRoot,
+                    Title = "下载整合包",
+                    Content = $"{pack.Title} v{pack.Version}\n作者：{pack.Author}\n大小：{pack.Size:N0} 字节\n\n下载并校验后，打开 DSH PackForge 管理器查看和安装。未安装管理器时，可获取安装版或选择已有的便携版程序。",
+                    PrimaryButtonText = "下载",
+                    CloseButtonText = "取消",
+                    DefaultButton = ContentDialogButton.Close
+                };
+                if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                {
+                    PackActionStatusText.Text = "下载已取消。";
+                    return;
+                }
+                PackActionStatusText.Text = "正在下载并校验整合包…";
+                path = await PackForgeMarketService.DownloadVerifiedAsync(pack);
+            }
+            UpdatePackFileUi();
+            AppendLog($"[ADL] 整合包校验完成：{pack.Owner}/{pack.Repo} v{pack.Version}，文件：{path}");
+            await OpenPackWithRecoveryAsync(path, PackActionStatusText, verified: true);
         }
         catch (Exception ex)
         {
-            PackActionStatusText.Text = $"未能打开整合包：{ex.Message} 如未安装管理器，请先获取 DSH PackForge 管理器。";
-            AppendLog($"[ADL] 整合包下载或打开失败：{ex.Message}");
+            PackActionStatusText.Text = $"整合包下载或校验失败：{ex.Message}";
+            AppendLog($"[ADL] 整合包下载或校验失败：{ex.Message}");
         }
         finally
         {
             _packDownloading = false;
+            UpdatePackFileUi();
             DownloadPackButton.IsEnabled = _selectedPack?.CanDownload == true;
         }
+    }
+
+    private async Task OpenPackWithRecoveryAsync(string path, TextBlock status, bool verified = false)
+    {
+        if (_packOpening || _demoMode) return;
+        _packOpening = true;
+        var prefix = verified ? "整合包已下载并通过大小与 SHA-256 校验。" : "整合包文件已选择。";
+        try
+        {
+            var result = await Task.Run(() => PackForgeLauncherService.Open(path, _packManagerPath));
+            if (result == PackOpenResult.Opened)
+            {
+                status.Text = prefix + "已发送打开管理器的请求，请在管理器中确认安装。";
+                AppendLog($"[ADL] 已发送整合包打开请求：{path}");
+                return;
+            }
+            status.Text = prefix + "尚未找到可打开此包的管理器。请获取 PackForge 管理器或选择已有程序后重试；文件已保留。";
+            AppendLog($"[ADL] 整合包文件已保留，未找到 PackForge 管理器或有效的 .dspack 文件关联：{path}");
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "整合包已准备好，需要 PackForge 管理器",
+                Content = $"{prefix}\n{path}\n\n可下载并安装 DSH PackForge Setup，或选择已有的 DSH PackForge 程序（包括便携版）。完成后重新打开此包即可，无需重复下载。",
+                PrimaryButtonText = "获取管理器",
+                SecondaryButtonText = "选择已有程序",
+                CloseButtonText = "稍后",
+                DefaultButton = ContentDialogButton.Close
+            };
+            var choice = await dialog.ShowAsync();
+            if (choice == ContentDialogResult.Primary) OpenUrl(PackForgeLauncherService.ReleasesUrl);
+            else if (choice == ContentDialogResult.Secondary && await PickPackManagerAsync(status) is { } manager)
+            {
+                if (await Task.Run(() => PackForgeLauncherService.Open(path, manager)) == PackOpenResult.Opened)
+                {
+                    status.Text = prefix + "已发送打开管理器的请求，请在管理器中确认安装。";
+                    AppendLog($"[ADL] 已通过所选 PackForge 程序打开整合包：{path}");
+                }
+                else status.Text = prefix + "所选管理器未能启动，文件已保留，可重新选择程序。";
+            }
+        }
+        catch (Exception ex)
+        {
+            status.Text = prefix + $"打开管理器失败：{ex.Message} 文件已保留，可稍后重试。";
+            AppendLog($"[ADL] 打开整合包管理器失败（文件已保留）：{ex.Message}");
+        }
+        finally { _packOpening = false; }
     }
 
     private void OpenPackRepositoryButton_Click(object sender, RoutedEventArgs e)
@@ -150,27 +220,54 @@ public sealed partial class MainPage
         if (_selectedPack is { } pack) OpenUrl(pack.RepositoryUrl);
     }
 
+    private void ShowPackFileButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_demoMode || _packFilePath is null) return;
+        try { PackForgeLauncherService.ShowFile(_packFilePath); }
+        catch (Exception ex) { PackActionStatusText.Text = $"无法定位文件：{ex.Message}"; }
+    }
+
     private async void OpenLocalPackButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_demoMode) return;
+        if (_demoMode || _packDownloading || _packOpening) return;
         var picker = new FileOpenPicker();
         picker.FileTypeFilter.Add(".dspack");
         WinRT.Interop.InitializeWithWindow.Initialize(picker,
             WinRT.Interop.WindowNative.GetWindowHandle(((App)Application.Current).MainWindow));
         var file = await picker.PickSingleFileAsync();
-        if (file is null) return;
-        try
+        if (file is not null) await OpenPackWithRecoveryAsync(file.Path, PackManagerStatusText);
+    }
+
+    private async Task<string?> PickPackManagerAsync(TextBlock status)
+    {
+        var picker = new FileOpenPicker();
+        picker.FileTypeFilter.Add(".exe");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker,
+            WinRT.Interop.WindowNative.GetWindowHandle(((App)Application.Current).MainWindow));
+        var file = await picker.PickSingleFileAsync();
+        if (file is null) return null;
+        if (!PackForgeLauncherService.IsManagerExecutable(file.Path))
         {
-            Process.Start(new ProcessStartInfo(file.Path) { UseShellExecute = true });
+            status.Text = "请选择 DSH PackForge.exe 或 DSH PackForge 版本号.exe 便携版程序；Setup 是安装程序。";
+            return null;
         }
-        catch (Exception ex)
-        {
-            PacksStatusText.Text = $"无法打开本地包：{ex.Message} 请安装 DSH PackForge 管理器。";
-        }
+        _packManagerPath = file.Path;
+        LauncherSettings.SavePackForgePath(file.Path);
+        status.Text = $"已保存管理器：{file.Path}，可以重新打开整合包。";
+        PackManagerStatusText.Text = status.Text;
+        return file.Path;
+    }
+
+    private async void SelectPackManagerButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_demoMode || _packDownloading || _packOpening) return;
+        var status = PackDetailCard.Visibility == Visibility.Visible ? PackActionStatusText : PackManagerStatusText;
+        try { await PickPackManagerAsync(status); }
+        catch (Exception ex) { status.Text = $"无法选择管理器：{ex.Message}"; }
     }
 
     private void OpenPackForgeButton_Click(object sender, RoutedEventArgs e) =>
-        OpenUrl("https://github.com/DSH-PackForge/dsh-packforge-app/releases");
+        OpenUrl(PackForgeLauncherService.ReleasesUrl);
 
     private async void SelectPackProfileButton_Click(object sender, RoutedEventArgs e)
     {

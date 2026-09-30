@@ -28,7 +28,7 @@ ADL `不内置` DeepSeek Harness，`也不处理 API 密钥`；
 
 ## 整合包
 
-侧边栏“整合包”读取 [DSH PackForge 市场](https://github.com/DSH-PackForge/dsh-pack-market) 的 schemaVersion 2 索引，采用与插件页一致的浏览列表和独立详情页，可搜索、查看摘要和来源仓库。缺少文件大小或 SHA-256 的条目也会显示，但仅提供仓库入口。下载 `.dspack` 时会核对索引中的文件大小与 SHA-256，然后通过系统文件关联交给 [DSH PackForge 管理器](https://github.com/DSH-PackForge/dsh-packforge-app) 查看和安装；安装确认在管理器中完成。本地 `.dspack` 与 Profile 导出位于“导入 / 导出”标签中。
+侧边栏“整合包”读取 [DSH PackForge 市场](https://github.com/DSH-PackForge/dsh-pack-market) 的 schemaVersion 2 索引，采用与插件页一致的浏览列表和独立详情页，可搜索、查看摘要和来源仓库。缺少文件大小或 SHA-256 的条目也会显示，但仅提供仓库入口。下载 `.dspack` 时会核对索引中的文件大小与 SHA-256，然后打开 [DSH PackForge 管理器](https://github.com/DSH-PackForge/dsh-packforge-app) 查看和安装；安装确认在管理器中完成。启动器优先直接启动已检测到或手动指定的管理器，再使用有效的系统文件关联。管理器缺失时会提示获取 Setup 或选择已有程序，已下载文件保留，并可点击“打开已下载包”重试；重试前再次校验，校验通过的文件无需重新下载。“显示文件”可定位本地包。本地 `.dspack`、便携版管理器选择与 Profile 导出位于“导入 / 导出”标签中。
 
 导出 Profile 使用管理器安装版随附的 `dspack` CLI：先选择 Profile 目录和输出目录，可预览扫描结果，再导出 manifest v5 / `.dspack` v3。若未安装管理器或 CLI 不在 PATH 中，页面会提示安装。格式规范见 [DSH-PackForge](https://github.com/DSH-PackForge/DSH-PackForge)。
 
@@ -54,6 +54,18 @@ Harness 默认监听 `http://127.0.0.1:3080/`；
 正在运行的服务不会被切换版本，需要停止后再启动
 本机显示的缓存版本不一定等于一个由其他程序启动的服务版本
 
+## WinUI 安装器
+
+安装器位于 `installer/`，使用 WinUI 官方控件，提供安装位置选择、桌面与开始菜单快捷方式、文件校验、失败回滚及卸载。构建需 PowerShell 7、.NET 8 SDK 和 Visual Studio C++ Build Tools（含 Windows SDK）。
+
+```powershell
+pwsh -File installer/scripts/Build-Installer.ps1
+dotnet run --project installer/tests/Installer.Smoke.csproj -c Release
+```
+
+安装包输出至 `installer/artifacts/<版本>-win-x64/`。打包脚本共享启动器和安装界面的运行时，以 LZX 压缩生成离线 Setup EXE；构建中间目录与产物由 Git 忽略。默认安装到当前用户的 `LocalAppData/Programs/AnotherDSHL`。
+构建盘空间不足时，可通过 `-WorkDirectory C:\Temp\ADL-build` 指定其他磁盘上的临时目录。
+
 演示模式为演示功能而制作，无需连接真实的DSH，所有安装和设置写入均被禁用(Demo)：
 
 ```powershell
@@ -75,6 +87,7 @@ Harness 默认监听 `http://127.0.0.1:3080/`；
 - `Services/DshVersionService.cs`：读取 npm 发布版本
 - `Services/PluginCatalogService.cs`：插件目录源获取与解析
 - `Services/PackForgeMarketService.cs`：整合包市场索引与下载完整性校验
+- `Services/PackForgeLauncherService.cs`：管理器检测、直接打开与文件关联回退
 - `Services/DesktopClientService.cs`：官方桌面客户端安装检测、下载与签名校验
 - `Services/ListeningProcessResolver.cs`：定位本地 DSH 监听进程
 - `tools/generate_assets.py`：从 `Assets/AppIcon.svg` 生成配色变体和 Windows 图块；重新生成需先安装 `tools/requirements-assets.txt`
