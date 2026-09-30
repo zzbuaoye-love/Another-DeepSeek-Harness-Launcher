@@ -7,7 +7,7 @@
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <WinUISDKReferences>false</WinUISDKReferences>
-    <EnableMsixTooling>false</EnableMsixTooling>
+    <EnableMsixTooling>true</EnableMsixTooling>
     <ApplicationManifest>..\..\..\app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\..\Assets\AppIcon.ico</ApplicationIcon>
     <AssemblyName>AnotherDSHL.Installer</AssemblyName>
@@ -18,10 +18,14 @@
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <PublishReadyToRun>false</PublishReadyToRun>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>0.0.1</Version>
+    <Version>0.0.2-beta</Version>
   </PropertyGroup>
   <ItemGroup>
+    <Page Remove="InstallerApp.xaml" />
+    <ApplicationDefinition Include="InstallerApp.xaml" />
     <Content Include="..\..\..\Assets\AppIcon.ico" Link="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\Assets\AeryoAppIcon.svg" Link="Assets\AeryoAppIcon.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\Assets\AeryoLogoMono.svg" Link="Assets\AeryoLogoMono.svg" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\..\Assets\Square44x44Logo.scale-200.png" Link="Assets\Square44x44Logo.scale-200.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\..\Assets\Square44x44Logo.targetsize-48_altform-lightunplated.png" Link="Assets\Square44x44Logo.targetsize-48_altform-lightunplated.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" />

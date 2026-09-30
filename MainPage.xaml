@@ -760,7 +760,7 @@
                                                Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                TextWrapping="Wrap" />
-                                    <TextBlock x:Name="AboutVersionText"
+                                <TextBlock x:Name="AboutVersionText"
                                                Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     <TextBlock Text="Powered By ZZBuAoYe"
@@ -773,6 +773,26 @@
                                        Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
+
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="启动器更新" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+                            <StackPanel Spacing="12">
+                                <TextBlock x:Name="AppUpdateStatus" Text="检查新版本，或选择本地更新包。" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
+                                <CheckBox x:Name="AppUpdatePrereleaseCheckBox" Content="包含测试版本" FontSize="12" />
+                                <ProgressBar x:Name="AppUpdateProgress" Visibility="Collapsed" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button x:Name="CheckAppUpdateButton" Content="检查更新" Click="CheckAppUpdate_Click" />
+                                    <Button x:Name="LocalAppUpdateButton" Content="安装本地更新包" Click="LocalAppUpdate_Click" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button x:Name="InstallPreparedAppUpdateButton" Content="安装已下载更新" Click="InstallPreparedAppUpdate_Click" Visibility="Collapsed" />
+                                    <Button x:Name="CancelAppUpdateButton" Content="取消" Click="CancelAppUpdate_Click" Visibility="Collapsed" />
+                                    <HyperlinkButton Content="发布页面" Click="AppReleases_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
 
                     <StackPanel Spacing="8">
                         <TextBlock Text="使用说明" Style="{StaticResource BodyStrongTextBlockStyle}" />

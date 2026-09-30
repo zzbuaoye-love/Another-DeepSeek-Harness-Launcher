@@ -14,16 +14,21 @@ public sealed record PayloadManifest(string Product, string Version, List<Payloa
     {
         var manifest = JsonSerializer.Deserialize<PayloadManifest>(File.ReadAllText(System.IO.Path.Combine(root, FileName)))
             ?? throw new InvalidDataException("安装清单为空");
-        if (manifest.Product != "AnotherDSHL" || string.IsNullOrWhiteSpace(manifest.Version) ||
+        manifest.Validate(root);
+        return manifest;
+    }
+    public void Validate(string root)
+    {
+        var manifest = this;
+        if (manifest.Product != "AnotherDSHL" || !ReleaseVersion.IsValid(manifest.Version) || manifest.Files == null ||
             manifest.Files.Count == 0 || !manifest.Files.Any(f => f.Path == "AnotherDSHL.exe") ||
-            manifest.Files.Select(f => f.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count() != manifest.Files.Count)
+            manifest.Files.Select(f => f.Path.Replace('\\', '/')).Distinct(StringComparer.OrdinalIgnoreCase).Count() != manifest.Files.Count)
             throw new InvalidDataException("安装清单无效");
         foreach (var file in manifest.Files)
         {
             Installation.SafePath(root, file.Path);
-            if (file.Size < 0 || file.Sha256.Length != 64) throw new InvalidDataException("文件校验信息无效。");
+            if (file.Path.Replace('\\', '/').Equals(FileName, StringComparison.OrdinalIgnoreCase) || file.Size < 0 || file.Sha256 == null || file.Sha256.Length != 64 || !file.Sha256.All(Uri.IsHexDigit)) throw new InvalidDataException("文件校验信息无效。");
         }
-        return manifest;
     }
 }
 
@@ -64,7 +69,9 @@ public sealed class Installation
     public static string SafePath(string root, string relative)
     {
         if (string.IsNullOrWhiteSpace(relative) || Path.IsPathRooted(relative) || relative.Contains(':') ||
-            relative.Split('/', '\\').Any(s => s is ".." or "." or ""))
+            relative.Split('/', '\\').Any(s => s is ".." or "." or "" || s.EndsWith('.') || s.EndsWith(' ') ||
+                s.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
+                System.Text.RegularExpressions.Regex.IsMatch(s, @"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)))
             throw new InvalidDataException("安装清单包含无效路径。");
         string full = Path.GetFullPath(Path.Combine(root, relative));
         if (!full.StartsWith(Path.GetFullPath(root).TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase))
@@ -86,7 +93,7 @@ public sealed class Installation
                 catch (InvalidOperationException) { }
             }
     }
-    public void Install(string source, string destination, bool desktop, bool startMenu, IProgress<double>? progress = null)
+    public void Install(string source, string destination, bool desktop, bool startMenu, IProgress<double>? progress = null, bool preserveShortcuts = false)
     {
         source = NormalizeDirectory(source);
         destination = NormalizeDirectory(destination);
@@ -147,7 +154,7 @@ public sealed class Installation
             File.Copy(Path.Combine(source, PayloadManifest.FileName), Path.Combine(stage, PayloadManifest.FileName));
             if (Directory.Exists(destination)) { Directory.Move(destination, backup); moved = true; }
             Directory.Move(stage, destination); replaced = true;
-            for (int i = 0; i < shortcutPaths.Length; i++)
+            for (int i = 0; !preserveShortcuts && i < shortcutPaths.Length; i++)
             {
                 if (i == 0 ? desktop : startMenu) ShortcutService.Create(shortcutPaths[i], Path.Combine(destination, ExecutableName));
                 else ShortcutService.DeleteIfOwned(shortcutPaths[i], Path.Combine(destination, ExecutableName));

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Aeryo app icon</title>
+  <defs>
+    <linearGradient id="aeryo-gradient" x1="28" y1="24" x2="106" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F5C451"/>
+      <stop offset="0.35" stop-color="#F08A3E"/>
+      <stop offset="0.65" stop-color="#D55D86"/>
+      <stop offset="1" stop-color="#744FD6"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(64 64) scale(3)">
+    <path
+      d="M28 91
+         C34 63 40 42 52 27
+         C58 20 66 20 71 28
+         C79 42 83 61 88 83
+         M38 69
+         C53 60 69 57 89 58
+         C102 58 109 64 108 74
+         C107 87 94 95 81 93"
+      fill="none"
+      stroke="url(#aeryo-gradient)"
+      stroke-width="16"
+      stroke-linecap="round"
+      stroke-linejoin="round"/>
+  </g>
+</svg>

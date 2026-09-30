@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$Configuration = 'Release', [string]$WorkDirectory = '')
+param([string]$Configuration = 'Release', [string]$WorkDirectory = '', [string]$BasePayloadDirectory = '')
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $version = ([xml](Get-Content -LiteralPath (Join-Path $repo 'AnotherDSHL.csproj') -Raw)).Project.PropertyGroup.Version | Select-Object -First 1
@@ -66,6 +66,17 @@ try {
     $writer.Write([Text.Encoding]::ASCII.GetBytes('ADL_CAB_PAYLOAD1'))
     $writer.Flush()
 } finally { $stream.Dispose() }
-$hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
-"$hash  $([IO.Path]::GetFileName($setup))" | Set-Content -LiteralPath (Join-Path $artifacts 'SHA256SUMS.txt') -Encoding ascii
-[pscustomobject]@{ Setup = $setup; SetupMiB = [math]::Round((Get-Item $setup).Length / 1MB, 2); InstalledMiB = [math]::Round(($files | Measure-Object Size -Sum).Sum / 1MB, 2); Payload = $payload; Work = $work } | ConvertTo-Json | Tee-Object -FilePath (Join-Path $artifacts 'build-info.json')
+$portable = Join-Path $artifacts "AnotherDSHL-v$version-win-x64-Portable.zip"
+Copy-Item -LiteralPath (Join-Path $repo 'LICENSE'),(Join-Path $repo 'THIRD_PARTY_NOTICES.md') -Destination $app
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+if (Test-Path -LiteralPath $portable) { Remove-Item -LiteralPath $portable }
+[IO.Compression.ZipFile]::CreateFromDirectory($app, $portable, [IO.Compression.CompressionLevel]::Optimal, $false)
+$releaseAssets = @($setup, $portable)
+if ($BasePayloadDirectory) {
+    $updatePackage = Join-Path $artifacts "AnotherDSHL-v$version-win-x64-Update.adup"
+    & dotnet run --project (Join-Path $repo 'installer\tools\PackageTool.csproj') -c Release -- $BasePayloadDirectory $payload $updatePackage
+    if ($LASTEXITCODE -ne 0) { throw 'Differential update generation failed.' }
+    $releaseAssets += $updatePackage
+}
+$releaseAssets | ForEach-Object { "$((Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash)  $([IO.Path]::GetFileName($_))" } | Set-Content -LiteralPath (Join-Path $artifacts 'SHA256SUMS.txt') -Encoding ascii
+[pscustomobject]@{ Setup = $setup; Portable = $portable; SetupMiB = [math]::Round((Get-Item $setup).Length / 1MB, 2); InstalledMiB = [math]::Round(($files | Measure-Object Size -Sum).Sum / 1MB, 2); Payload = $payload; Work = $work } | ConvertTo-Json | Tee-Object -FilePath (Join-Path $artifacts 'build-info.json')

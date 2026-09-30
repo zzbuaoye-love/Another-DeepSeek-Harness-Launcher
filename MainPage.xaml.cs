@@ -73,6 +73,13 @@ public sealed partial class MainPage : Page
                 arg.StartsWith("--demo-packforge=", StringComparison.OrdinalIgnoreCase))?[17..] ?? "";
         RefreshPackManagerUi();
         RefreshInstalledPacks();
+        AppUpdatePrereleaseCheckBox.IsChecked = AppUpdateService.CurrentVersion.Contains('-');
+        if (!_demoMode)
+        {
+            _preparedAppUpdate = new AppUpdateService().LoadPrepared();
+            SetAppUpdateBusy(false);
+            if (_preparedAppUpdate is { } update) AppUpdateStatus.Text = $"{update.Version} 已下载，可继续安装。";
+        }
         _desktopLaunchMode = !_demoMode && LauncherSettings.LoadLaunchMode() == "desktop";
         LaunchModeComboBox.SelectedIndex = _desktopLaunchMode ? 1 : 0;
         _launchModeReady = true;
@@ -225,6 +232,16 @@ public sealed partial class MainPage : Page
             HomePackComboBox.SelectedIndex = 1;
             WorkspaceNameText.Text = "SampleProject";
             UpdateBranding();
+        }
+        else if (demoViewArg is "updates" or "updates-ready")
+        {
+            ShellNavigation.SelectedItem = AboutItem;
+            if (demoViewArg == "updates-ready")
+            {
+                _preparedAppUpdate = new PreparedUpdate("demo.exe", false, "0.0.3-beta", new string('0', 64));
+                SetAppUpdateBusy(false);
+                AppUpdateStatus.Text = "0.0.3-beta 已下载并校验，可继续安装。";
+            }
         }
         else if (demoViewArg is "packs" or "packforge" or "packs-export" or "packs-detail" or "packs-unverified" or "packs-installing" or "packs-installed")
         {

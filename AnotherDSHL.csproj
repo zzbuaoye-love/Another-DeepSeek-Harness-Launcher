@@ -15,10 +15,10 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.0.1</Version>
-    <AssemblyVersion>0.0.1.0</AssemblyVersion>
-    <FileVersion>0.0.1.0</FileVersion>
-    <InformationalVersion>0.0.1 Beta</InformationalVersion>
+    <Version>0.0.2-beta</Version>
+    <AssemblyVersion>0.0.2.0</AssemblyVersion>
+    <FileVersion>0.0.2.0</FileVersion>
+    <InformationalVersion>0.0.2-beta</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Product>AnotherDSHL</Product>
     <Description>Another DeepSeek Harness Launcher</Description>
@@ -26,6 +26,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="installer\src\Installer.Core\Installer.Core.csproj" />
+    <Content Include="Assets\AeryoAppIcon.svg" />
+    <Content Include="Assets\AeryoLogoMono.svg" />
     <Content Include="Assets\SplashScreen.scale-200.png" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />
     <Content Include="Assets\Square150x150Logo.scale-200.png" />
@@ -47,6 +50,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Update="Assets\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Resources\PackForge\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Compile Remove="packforge\tests\**\*.cs" />
   </ItemGroup>

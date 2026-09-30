@@ -64,6 +64,8 @@ Harness 默认监听 `http://127.0.0.1:3080/`；
 
 ## WinUI 安装器
 
+下载 [GitHub Releases](https://github.com/zzbuaoye-love/Another-DeepSeek-Harness-Launcher/releases) 中的 `Setup.exe` 安装版，或解压 `Portable.zip` 使用便携版；两者均包含运行时与整合包引擎。`SHA256SUMS.txt` 提供资源校验值。
+
 安装器位于 `installer/`，使用 WinUI 官方控件，提供安装位置选择、桌面与开始菜单快捷方式、文件校验、失败回滚及卸载。构建需 PowerShell 7、.NET 8 SDK 和 Visual Studio C++ Build Tools（含 Windows SDK）。
 
 ```powershell
@@ -73,6 +75,14 @@ dotnet run --project installer/tests/Installer.Smoke.csproj -c Release
 
 安装包输出至 `installer/artifacts/<版本>-win-x64/`。打包脚本共享启动器和安装界面的运行时，以 LZX 压缩生成离线 Setup EXE；构建中间目录与产物由 Git 忽略。默认安装到当前用户的 `LocalAppData/Programs/AnotherDSHL`。
 构建盘空间不足时，可通过 `-WorkDirectory C:\Temp\ADL-build` 指定其他磁盘上的临时目录。
+
+### 启动器更新
+
+“关于 → 启动器更新”支持手动检查 GitHub Releases、选择是否包含测试版本、取消检查或下载，以及稍后安装。下载会核对资源大小与 SHA-256，失败或取消后清理本次临时缓存；校验成功的更新会记录下来，重启后仍可继续安装，启动安装前再次校验。下载与退出安装分别确认；正在进行其他安装任务时，需要先完成或取消该任务。
+
+安装版优先使用基础版本匹配的 `.adup` 差分包，否则使用完整 Setup。可手动选择本地 `.adup`，启动器先复制并校验其中每个变更文件，再交给维护工具安装。更新保留设置、已有快捷方式和非安装包拥有的文件，出现错误时回滚文件及注册信息。便携版和首版 `v0.0.1-beta` ZIP 用户使用完整安装包升级；本次发布为后续差分更新提供安装基础。
+
+安装器构建同时生成完整 Setup、便携 ZIP 和校验清单。保留实际发布的 `build-info.json` 中记录的 Payload 目录，可用 `-BasePayloadDirectory` 为后续版本生成差分包。详细说明见 `installer/README.md`。
 
 演示模式为演示功能而制作，无需连接真实的DSH，所有安装和设置写入均被禁用(Demo)：
 
@@ -101,6 +111,9 @@ dotnet run --project installer/tests/Installer.Smoke.csproj -c Release
 - `packforge/`：PackForge 核心源码、引擎构建及烟雾测试
 - `Resources/PackForge/`：随启动器打包的引擎与许可证
 - `Services/DesktopClientService.cs`：官方桌面客户端安装检测、下载与签名校验
+- `Services/AppUpdateService.cs`：发布检查、更新下载校验与稍后安装缓存
+- `MainPage.Updates.cs`：更新操作与取消、确认流程
+- `installer/`：WinUI 安装及维护工具、差分包构建和验证
 - `Services/ListeningProcessResolver.cs`：定位本地 DSH 监听进程
 - `tools/generate_assets.py`：从 `Assets/AppIcon.svg` 生成配色变体和 Windows 图块；重新生成需先安装 `tools/requirements-assets.txt`
 - `THIRD_PARTY_NOTICES.md`：Lucide 图标和 DSH 官方标志来源
