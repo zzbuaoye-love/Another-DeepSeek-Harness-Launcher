@@ -68,7 +68,7 @@ public static class PackForgeMarketService
     public static async Task<string> DownloadVerifiedAsync(MarketPack pack, CancellationToken cancellationToken = default)
     {
         if (!pack.CanDownload)
-            throw new InvalidDataException("此条目不支持通过管理器打开。");
+            throw new InvalidDataException("此条目缺少有效的下载地址或完整性校验信息。");
         var existing = await TryGetVerifiedLocalPathAsync(pack, cancellationToken);
         if (existing is not null) return existing;
         var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

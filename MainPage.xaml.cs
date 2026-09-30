@@ -72,6 +72,7 @@ public sealed partial class MainPage : Page
             _packManagerPath = Environment.GetCommandLineArgs().FirstOrDefault(arg =>
                 arg.StartsWith("--demo-packforge=", StringComparison.OrdinalIgnoreCase))?[17..] ?? "";
         RefreshPackManagerUi();
+        RefreshInstalledPacks();
         _desktopLaunchMode = !_demoMode && LauncherSettings.LoadLaunchMode() == "desktop";
         LaunchModeComboBox.SelectedIndex = _desktopLaunchMode ? 1 : 0;
         _launchModeReady = true;
@@ -216,7 +217,16 @@ public sealed partial class MainPage : Page
             LaunchModeComboBox.SelectedIndex = 1;
             if (demoViewArg == "home-mode-roundtrip") LaunchModeComboBox.SelectedIndex = 0;
         }
-        else if (demoViewArg is "packs" or "packforge" or "packs-export" or "packs-detail" or "packs-unverified")
+        else if (demoViewArg == "home-pack")
+        {
+            var pack = new InstalledPack("demo-pack", "丝滑的DSH", "1.0.1", new string('0', 64), "0.2.0-rc.2",
+                "smoother-deepseek-harness", "home", "runtime/lib/bin.js", @"C:\Demo\SampleProject", DateTimeOffset.UtcNow);
+            HomePackComboBox.Items.Add(new ComboBoxItem { Content = pack.DisplayName, Tag = pack });
+            HomePackComboBox.SelectedIndex = 1;
+            WorkspaceNameText.Text = "SampleProject";
+            UpdateBranding();
+        }
+        else if (demoViewArg is "packs" or "packforge" or "packs-export" or "packs-detail" or "packs-unverified" or "packs-installing" or "packs-installed")
         {
             _marketPacks =
             [
@@ -234,6 +244,19 @@ public sealed partial class MainPage : Page
             FilterPacks();
             ShellNavigation.SelectedItem = ShellNavigation.MenuItems[3];
             if (demoViewArg == "packs-detail") PacksList.SelectedIndex = 0;
+            if (demoViewArg is "packs-installing" or "packs-installed")
+            {
+                PacksList.SelectedItem = _marketPacks.FirstOrDefault(pack => pack.Name == "smoother-deepseek-harness") ?? _marketPacks[0];
+                PackInstallProgressPanel.Visibility = Visibility.Visible;
+                var done = demoViewArg == "packs-installed";
+                PackInstallProgressText.Text = done ? "安装完成，可以从首页选择此整合包启动。" : "正在安装插件依赖…";
+                PackInstallProgressBar.IsIndeterminate = !done;
+                PackInstallProgressBar.Value = done ? 100 : 0;
+                CancelPackInstallButton.Visibility = done ? Visibility.Collapsed : Visibility.Visible;
+                DismissPackInstallButton.Visibility = done ? Visibility.Visible : Visibility.Collapsed;
+                PackActionStatusText.Text = done ? "已安装到独立实例，原来的 DSH 配置保持不变。" : "正在准备独立实例，安装失败时清理本次临时内容。";
+                LaunchInstalledPackButton.Visibility = done ? Visibility.Visible : Visibility.Collapsed;
+            }
             if (demoViewArg == "packs-unverified") PacksList.SelectedItem = _marketPacks.FirstOrDefault(pack => !pack.CanDownload);
             DownloadPackButton.IsEnabled = false;
             PreviewPackButton.IsEnabled = false;
@@ -720,7 +743,7 @@ public sealed partial class MainPage : Page
 
     private void UpdateBranding()
     {
-        var showDsh = _desktopLaunchMode || _dshVersion is not null || _starting || _serviceReady || _service is { HasExited: false };
+        var showDsh = _desktopLaunchMode || _activePack is not null || _dshVersion is not null || _starting || _serviceReady || _service is { HasExited: false };
         BrandLogo.Width = BrandLogo.Height = showDsh ? 72 : 48;
         BrandLogo.Source = showDsh
             ? new Microsoft.UI.Xaml.Media.Imaging.SvgImageSource(new Uri("ms-appx:///Assets/DeepSeekHarness.svg"))
@@ -736,6 +759,7 @@ public sealed partial class MainPage : Page
                 : $"服务运行中 · 端口 {_activeWebPort}"
             : _starting || _service is { HasExited: false }
                 ? "正在准备本地服务"
+                : _activePack is { } pack ? $"{pack.Title} · {pack.Profile} · DSH {pack.DshVersion}"
                 : _dshVersion is not null ? $"本机缓存 · v{_dshVersion}" : "Yet Another Deepseek Harness Launcher";
         ((MainWindow)((App)Application.Current).MainWindow).SetCornerBrandVisible(false);
     }
@@ -1282,7 +1306,8 @@ public sealed partial class MainPage : Page
     {
         var path = WorkspaceTextBox.Text.Trim();
         var valid = Directory.Exists(path);
-        WorkspaceNameText.Text = valid ? new DirectoryInfo(path).Name : "选择工作区";
+        var activePath = _activePack?.Workspace ?? path;
+        WorkspaceNameText.Text = Directory.Exists(activePath) ? new DirectoryInfo(activePath).Name : "选择工作区";
         WorkspaceHint.Visibility = valid ? Visibility.Collapsed : Visibility.Visible;
         WorkspaceHint.Text = valid ? "将以这个目录作为 Harness 的默认工作区。" : "请选择已存在的文件夹。";
         WorkspaceHint.Foreground = new SolidColorBrush(valid
@@ -1330,7 +1355,7 @@ public sealed partial class MainPage : Page
         }
         if (_service is { HasExited: false } || _starting)
             return;
-        var workspace = WorkspaceTextBox.Text.Trim();
+        var workspace = _activePack?.Workspace ?? WorkspaceTextBox.Text.Trim();
         if (!Directory.Exists(workspace))
         {
             WorkspaceHint.Text = "请先选择已存在的工作目录。";
@@ -1349,7 +1374,7 @@ public sealed partial class MainPage : Page
             ApplyRunningUiState();
             return;
         }
-        if (!_nodeSupported || _npxPath is null)
+        if (!_nodeSupported || (_activePack is null && _npxPath is null))
         {
             AppendLog("[ADL] Node.js 或 npx 未就绪，无法启动。");
             ShellNavigation.SelectedItem = ShellNavigation.MenuItems[1];
@@ -1363,7 +1388,7 @@ public sealed partial class MainPage : Page
         }
 
         _starting = true;
-        _runningDshVersion = _selectedDshVersion;
+        _runningDshVersion = _activePack?.DshVersion ?? _selectedDshVersion;
         ++_tipsSessionId;
         ShowLaunchStepTip("准备启动", "正在检查 DSH 资源", 12);
         UpdateBranding();
@@ -1374,12 +1399,16 @@ public sealed partial class MainPage : Page
         LaunchProgress.IsActive = true;
         AppendLog($"[ADL] 工作目录：{workspace}");
         var packageSpec = _selectedDshVersion.Length == 0 ? "@deepseek-ai/dsh" : $"@deepseek-ai/dsh@{_selectedDshVersion}";
-        AppendLog($"[ADL] 运行 npx --yes {packageSpec} web --no-open --port {_activeWebPort}");
+        AppendLog(_activePack is { } pack
+            ? $"[ADL] 启动整合包实例：{pack.Id} · DSH {pack.DshVersion} · Profile {pack.Profile}"
+            : $"[ADL] 运行 npx --yes {packageSpec} web --no-open --port {_activeWebPort}");
 
         try
         {
             // The command is fixed; the user-selected path is passed only as WorkingDirectory.
-            var startInfo = new ProcessStartInfo("cmd.exe")
+            var startInfo = _activePack is { } installedPack
+                ? _packEngine.CreateLaunchInfo(installedPack, _nodePath!, _activeWebPort)
+                : new ProcessStartInfo("cmd.exe")
             {
                 Arguments = $"/d /c \"\"{_npxPath}\" --yes {packageSpec} web --no-open --port {_activeWebPort}\"",
                 WorkingDirectory = workspace,

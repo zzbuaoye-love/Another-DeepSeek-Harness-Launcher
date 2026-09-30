@@ -12,7 +12,6 @@ public sealed partial class MainPage
     private MarketPack? _selectedPack;
     private bool _packsLoaded;
     private bool _packsLoading;
-    private bool _packDownloading;
     private string? _packProfilePath;
     private string? _packOutputPath;
     private bool _packExporting;
@@ -31,11 +30,11 @@ public sealed partial class MainPage
             : manager is not null ? "已自动检测到 PackForge，也可选择程序并固定路径。" : "未检测到管理器，可选择已安装的程序或便携版并固定路径。";
         PackForgeWorkspaceStatusText.Text = status;
         PackManagerStatusText.Text = manager is not null
-            ? $"{(pinned ? "使用已固定的管理器" : "已检测到管理器")}：{manager}"
-            : status;
+            ? $"外部管理器（可选）：{manager}"
+            : "内置引擎提供安装与导出，无需配置外部管理器。";
         // A stale pin needs path repair, not another installation prompt.
         var acquisitionVisibility = manager is not null || pinned ? Visibility.Collapsed : Visibility.Visible;
-        LocalGetPackForgeButton.Visibility = DetailGetPackForgeButton.Visibility = acquisitionVisibility;
+        WorkspaceGetPackForgeButton.Visibility = acquisitionVisibility;
     }
 
     private async void SelectWorkspacePackManager_Click(object sender, RoutedEventArgs e)
@@ -45,7 +44,7 @@ public sealed partial class MainPage
             PackForgeWorkspaceStatusText.Text = "演示模式不会保存路径，请在正常启动的窗口中选择程序。";
             return;
         }
-        if (_packDownloading || _packOpening || _packExporting)
+        if (_packInstalling || _packOpening || _packExporting)
         {
             PackForgeWorkspaceStatusText.Text = "正在处理整合包，请完成当前操作后再选择管理器。";
             return;
@@ -56,7 +55,7 @@ public sealed partial class MainPage
 
     private void ResetPackForgePath_Click(object sender, RoutedEventArgs e)
     {
-        if (_demoMode || _packDownloading || _packOpening || _packExporting) return;
+        if (_demoMode || _packInstalling || _packOpening || _packExporting) return;
         if (!LauncherSettings.SavePackForgePath(""))
         {
             PackForgeWorkspaceStatusText.Text = "无法保存设置，请检查配置目录的写入权限后重试。";
@@ -137,10 +136,11 @@ public sealed partial class MainPage
         PackDetailContents.Text = pack.Type == "dshhome"
             ? $"{pack.ProfileCount} 个 Profile · {pack.BundleCount} 个 Bundle · {pack.DepCount} 个依赖"
             : $"{pack.BundleCount} 个 Bundle · {pack.DepCount} 个依赖";
-        DownloadPackButton.IsEnabled = pack.CanDownload && !_packDownloading && !_demoMode;
+        DownloadPackButton.IsEnabled = pack.CanDownload && !_packInstalling && !_demoMode;
         UpdatePackFileUi();
+        RefreshInstalledPacks();
         PackActionStatusText.Text = pack.CanDownload
-            ? "下载并校验后打开 PackForge 管理器；已下载的包可直接重新打开。"
+            ? "下载并校验后，在启动器中安装到独立实例。已下载的包无需重复下载。"
             : pack.IsDspack ? "此条目缺少有效的大小或 SHA-256 校验信息，请到仓库查看安装方式。"
                 : "此条目是历史格式，请到仓库查看安装方式。";
     }
@@ -152,7 +152,8 @@ public sealed partial class MainPage
         ShowPackFileButton.Visibility = _packFilePath is null ? Visibility.Collapsed : Visibility.Visible;
         PackDownloadedPathText.Visibility = ShowPackFileButton.Visibility;
         PackDownloadedPathText.Text = _packFilePath is null ? "" : $"已下载文件：{_packFilePath}";
-        DownloadPackButton.Content = _packFilePath is null ? "下载并交给管理器安装" : "打开已下载包";
+        DownloadPackButton.Content = _packFilePath is null ? "下载并安装" : "安装已下载包";
+        ExternalOpenPackButton.Visibility = _packFilePath is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void BackToPacks_Click(object sender, RoutedEventArgs e)
@@ -181,55 +182,15 @@ public sealed partial class MainPage
 
     private async void DownloadPackButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_demoMode || _packDownloading || _packOpening || _selectedPack is not { } pack || !pack.CanDownload) return;
-        _packDownloading = true;
-        DownloadPackButton.IsEnabled = false;
-        try
+        if (_demoMode || _packInstalling || _packExporting || _packOpening || _selectedPack is not { } pack || !pack.CanDownload) return;
+        await InstallPackInLauncherAsync(async token =>
         {
-            PackActionStatusText.Text = "正在校验本地整合包…";
-            var path = await PackForgeMarketService.TryGetVerifiedLocalPathAsync(pack);
-            if (path is null)
-            {
-                RefreshPackManagerUi();
-                var managerHint = !string.IsNullOrWhiteSpace(_packManagerPath)
-                    ? "将使用工作区中固定的 PackForge 程序打开；程序路径失效时可在工作区重新选择。"
-                    : PackForgeLauncherService.FindManager() is not null
-                        ? "将使用已检测到的 PackForge 管理器打开。"
-                        : "尚未检测到管理器，可获取安装版或在工作区选择并固定便携版程序。";
-                var dialog = new ContentDialog
-                {
-                    XamlRoot = XamlRoot,
-                    Title = "下载整合包",
-                    Content = $"{pack.Title} v{pack.Version}\n作者：{pack.Author}\n大小：{pack.Size:N0} 字节\n\n下载并校验后，在 DSH PackForge 管理器中确认整合包安装。{managerHint}",
-                    PrimaryButtonText = "下载",
-                    CloseButtonText = "取消",
-                    DefaultButton = ContentDialogButton.Close
-                };
-                if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-                {
-                    PackActionStatusText.Text = "下载已取消。";
-                    return;
-                }
-                PackActionStatusText.Text = "正在下载并校验整合包…";
-                path = await PackForgeMarketService.DownloadVerifiedAsync(pack);
-            }
-            UpdatePackFileUi();
-            AppendLog($"[ADL] 整合包校验完成：{pack.Owner}/{pack.Repo} v{pack.Version}，文件：{path}");
-            await OpenPackWithRecoveryAsync(path, PackActionStatusText, verified: true);
-        }
-        catch (Exception ex)
-        {
-            PackActionStatusText.Text = $"整合包下载或校验失败：{ex.Message}";
-            AppendLog($"[ADL] 整合包下载或校验失败：{ex.Message}");
-        }
-        finally
-        {
-            _packDownloading = false;
-            UpdatePackFileUi();
-            DownloadPackButton.IsEnabled = _selectedPack?.CanDownload == true;
-        }
+            PackInstallProgressText.Text = "正在下载并校验整合包…";
+            var path = await PackForgeMarketService.DownloadVerifiedAsync(pack, token);
+            AppendLog($"[ADL] 整合包已通过大小与 SHA-256 校验：{path}");
+            return path;
+        }, PackActionStatusText);
     }
-
     private async Task OpenPackWithRecoveryAsync(string path, TextBlock status, bool verified = false)
     {
         if (_packOpening || _demoMode) return;
@@ -297,7 +258,18 @@ public sealed partial class MainPage
 
     private async void OpenLocalPackButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_demoMode || _packDownloading || _packOpening) return;
+        if (_demoMode || _packInstalling || _packExporting || _packOpening) return;
+        var picker = new FileOpenPicker();
+        picker.FileTypeFilter.Add(".dspack");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker,
+            WinRT.Interop.WindowNative.GetWindowHandle(((App)Application.Current).MainWindow));
+        var file = await picker.PickSingleFileAsync();
+        if (file is not null) await InstallPackInLauncherAsync(_ => Task.FromResult(file.Path), PackManagerStatusText);
+    }
+
+    private async void ExternalOpenLocalPack_Click(object sender, RoutedEventArgs e)
+    {
+        if (_demoMode || _packInstalling || _packExporting || _packOpening) return;
         var picker = new FileOpenPicker();
         picker.FileTypeFilter.Add(".dspack");
         WinRT.Interop.InitializeWithWindow.Initialize(picker,
@@ -373,75 +345,40 @@ public sealed partial class MainPage
 
     private async Task RunPackCommandAsync(bool preview)
     {
-        if (_demoMode || _packExporting) return;
+        if (_demoMode || _packExporting || _packInstalling) return;
         if (_packProfilePath is null || (!preview && _packOutputPath is null))
         {
             PackExportStatusText.Text = preview ? "请先选择 Profile 目录。" : "请先选择 Profile 和输出目录。";
-            return;
-        }
-        RefreshProcessPath();
-        var cli = PackForgeLauncherService.FindBundledCli(_packManagerPath) ?? FindOnPath("dspack.exe");
-        if (cli is null)
-        {
-            PackExportStatusText.Text = PackForgeLauncherService.FindManager(_packManagerPath) is not null
-                ? "此管理器旁未找到 dspack CLI。便携版可在 PackForge 界面中导出；也可将独立 dspack CLI 加入 PATH。"
-                : !string.IsNullOrWhiteSpace(_packManagerPath)
-                    ? "固定的管理器路径不可用，请在工作区重新选择程序。"
-                    : "未找到 dspack CLI，请在工作区选择 PackForge 安装版程序，或将独立 CLI 加入 PATH。";
             return;
         }
         if (!preview)
         {
             var dialog = new ContentDialog
             {
-                XamlRoot = XamlRoot,
-                Title = "导出 Profile 整合包",
-                Content = $"来源：{_packProfilePath}\n输出：{_packOutputPath}\n\nPackForge 将扫描并过滤敏感文件，生成 manifest v5 的 .dspack。",
-                PrimaryButtonText = "导出",
-                CloseButtonText = "取消",
-                DefaultButton = ContentDialogButton.Close
+                XamlRoot = XamlRoot, Title = "导出 Profile 整合包",
+                Content = $"来源：{_packProfilePath}\n输出：{_packOutputPath}\n\n内置引擎将扫描并过滤敏感文件，生成 .dspack 整合包。",
+                PrimaryButtonText = "导出", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close
             };
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         }
         _packExporting = true;
         PreviewPackButton.IsEnabled = ExportPackButton.IsEnabled = false;
-        PackExportStatusText.Text = preview ? "正在扫描 Profile…" : "正在导出整合包…";
         try
         {
-            var start = new ProcessStartInfo(cli)
-            {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-            start.ArgumentList.Add(preview ? "inspect" : "pack");
-            start.ArgumentList.Add(_packProfilePath);
-            if (!preview)
-            {
-                start.ArgumentList.Add("--out");
-                start.ArgumentList.Add(_packOutputPath!);
-            }
-            using var process = new Process { StartInfo = start };
-            process.Start();
-            var output = process.StandardOutput.ReadToEndAsync();
-            var errors = process.StandardError.ReadToEndAsync();
-            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
-            try { await process.WaitForExitAsync(timeout.Token); }
-            catch (OperationCanceledException)
-            {
-                process.Kill(entireProcessTree: true);
-                throw new TimeoutException("PackForge 命令超过 10 分钟，已停止。");
-            }
-            var message = (await output + "\n" + await errors).Trim();
-            PackExportStatusText.Text = (process.ExitCode == 0 ? "完成。\n" : $"未完成（退出代码 {process.ExitCode}）。\n") +
-                                        (message.Length > 2400 ? message[..2400] + "\n…" : message);
-            AppendLog($"[ADL] PackForge {(preview ? "预览" : "导出")}退出代码：{process.ExitCode}");
+            var tools = await GetPackToolsAsync();
+            PackExportStatusText.Text = preview ? "正在扫描 Profile…" : "正在导出整合包…";
+            var result = preview
+                ? await _packEngine.InspectProfileAsync(_packProfilePath, tools.Node)
+                : await _packEngine.ExportAsync(_packProfilePath, _packOutputPath!, _selectedDshVersion, tools.Node,
+                    new Progress<PackEngineProgress>(message => AppendLog($"[PackForge] {message.Detail}")));
+            var message = System.Text.Json.JsonSerializer.Serialize(result, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            PackExportStatusText.Text = "完成。\n" + (message.Length > 2400 ? message[..2400] + "\n…" : message);
+            AppendLog($"[ADL] 内置引擎{(preview ? "预览" : "导出")}完成。");
         }
         catch (Exception ex)
         {
-            PackExportStatusText.Text = $"PackForge 命令失败：{ex.Message}";
-            AppendLog($"[ADL] PackForge 命令失败：{ex.Message}");
+            PackExportStatusText.Text = $"操作未完成：{ex.Message}";
+            AppendLog($"[ADL] 整合包导出操作失败：{ex.Message}");
         }
         finally
         {

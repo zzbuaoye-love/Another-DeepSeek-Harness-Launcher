@@ -230,6 +230,18 @@ internal static class LauncherSettings
 
     public static bool SavePackForgePath(string path) => SaveValue("PackForgePath", path);
 
+    public static string LoadActivePackId()
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(SettingsPath));
+            return document.RootElement.TryGetProperty("ActivePackId", out var id) ? id.GetString() ?? "" : "";
+        }
+        catch { return ""; }
+    }
+
+    public static bool SaveActivePackId(string id) => SaveValue("ActivePackId", id);
+
     private static bool SaveValue(string key, string value)
     {
         try

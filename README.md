@@ -28,9 +28,17 @@ ADL `不内置` DeepSeek Harness，`也不处理 API 密钥`；
 
 ## 整合包
 
-侧边栏“整合包”读取 [DSH PackForge 市场](https://github.com/DSH-PackForge/dsh-pack-market) 的 schemaVersion 2 索引，采用与插件页一致的浏览列表和独立详情页，可搜索、查看摘要和来源仓库。缺少文件大小或 SHA-256 的条目也会显示，但仅提供仓库入口。下载 `.dspack` 时会核对索引中的文件大小与 SHA-256，然后打开 [DSH PackForge 管理器](https://github.com/DSH-PackForge/dsh-packforge-app) 查看和安装；整合包安装确认在管理器中完成。“工作区 → PackForge 管理器”可选择安装版 `DSH PackForge.exe` 或便携版 `DSH.PackForge.版本号.exe` / `DSH PackForge 版本号.exe`，选择后立即固定并保存路径，重启仍生效。固定后整合包页隐藏获取管理器入口，直接使用该程序，无需文件关联；路径失效时提示回到工作区重新选择，不会切换到其他程序。“恢复自动检测”可取消固定。未固定时优先检测安装版，再使用有效的系统文件关联；管理器缺失时会提示获取 Setup 或选择已有程序。已下载文件保留，并可点击“打开已下载包”重试；重试前再次校验，校验通过的文件无需重新下载。“显示文件”可定位本地包。本地 `.dspack` 与 Profile 导出位于“导入 / 导出”标签中。
+侧边栏“整合包”读取 [DSH PackForge 市场](https://github.com/DSH-PackForge/dsh-pack-market) 的 schemaVersion 2 索引，采用与插件页一致的浏览列表和独立详情页，可搜索、查看摘要和来源仓库。缺少文件大小或 SHA-256 的条目也会显示，但仅提供仓库入口。下载 `.dspack` 时核对索引中的文件大小与 SHA-256，再由启动器内置的 PackForge 核心引擎解析和安装，无需安装 PackForge 桌面管理器。
 
-导出 Profile 使用管理器安装版随附的 `dspack` CLI：优先从所选程序旁的 `resources/cli/dspack.exe` 查找，再查找 PATH。先选择 Profile 目录和输出目录，可预览扫描结果，再导出 manifest v5 / `.dspack` v3。便携版未附带 CLI 时可使用管理器界面导出，或将独立 CLI 加入 PATH。格式规范见 [DSH-PackForge](https://github.com/DSH-PackForge/DSH-PackForge)。
+安装前显示包内容、DSH 版本、目标路径和工作目录，可选择启动 Profile。每次安装创建独立的 `LocalAppData/AnotherDSHL/Instances` 实例，包含自己的 DSH 运行时、DSH_HOME 和 Profile。底部显示安装进度并支持取消；失败或取消会清理本次临时安装目录，保留下载缓存。安装完成后可在首页左上角选择实例，选择会持久保存；需要先停止当前服务再切换实例。整合包实例使用“常规版”启动，官方桌面客户端仍由其自身管理工作区。
+
+安装和导出需要在工作区配置 Node.js 22.19+ 或 24+。安装会联网下载 DSH 和依赖；未检测到可用 pnpm 时，在实例内准备固定版本的 pnpm，不修改全局安装。支持 `.dspack` v2 / manifest v4 和 `.dspack` v3 / manifest v5 的 Profile 与 DSH_HOME 包；当前不支持旧 `.tgz` 和包含 vendored 离线依赖的扩展包，安装前会明确提示。
+
+“导入 / 导出”标签提供本地 `.dspack` 安装、已安装实例选择及 Profile 导出。导出也使用内置引擎，可先预览文件扫描结果，再生成 manifest v5 / `.dspack` v3，过滤 `.env` 等敏感文件。格式规范见 [DSH-PackForge](https://github.com/DSH-PackForge/DSH-PackForge)。
+
+[DSH PackForge 管理器](https://github.com/DSH-PackForge/dsh-packforge-app) 保留为可选入口。“工作区 → PackForge 管理器”可选择安装版或便携版程序，立即固定并保存路径，重启仍生效；“恢复自动检测”取消固定。已下载包可通过“用外部管理器打开”交给所选程序，无需系统文件关联；路径失效时提示重新选择。“显示文件”可定位本地包。
+
+内置引擎的来源、构建步骤和测试说明见 `packforge/README.md`。运行 `dotnet run --project packforge/tests/Engine.Smoke.csproj` 可验证安装、导出、实例启动参数、完整性检查和取消清理；添加 `-- --real --launch` 可联网验证真实市场包安装及独立 Profile 的 Web 启动。
 
 ## 构建和运行
 
@@ -88,6 +96,10 @@ dotnet run --project installer/tests/Installer.Smoke.csproj -c Release
 - `Services/PluginCatalogService.cs`：插件目录源获取与解析
 - `Services/PackForgeMarketService.cs`：整合包市场索引与下载完整性校验
 - `Services/PackForgeLauncherService.cs`：管理器检测、直接打开与文件关联回退
+- `Services/PackForgeEngineService.cs`：内置引擎调用、独立实例安装与启动、取消清理
+- `MainPage.PackInstall.cs`：整合包安装预览、进度和实例选择
+- `packforge/`：PackForge 核心源码、引擎构建及烟雾测试
+- `Resources/PackForge/`：随启动器打包的引擎与许可证
 - `Services/DesktopClientService.cs`：官方桌面客户端安装检测、下载与签名校验
 - `Services/ListeningProcessResolver.cs`：定位本地 DSH 监听进程
 - `tools/generate_assets.py`：从 `Assets/AppIcon.svg` 生成配色变体和 Windows 图块；重新生成需先安装 `tools/requirements-assets.txt`

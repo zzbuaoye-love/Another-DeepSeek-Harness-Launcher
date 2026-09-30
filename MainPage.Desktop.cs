@@ -26,6 +26,7 @@ public sealed partial class MainPage
 
     private void UpdateHomeLaunchMode()
     {
+        HomePackComboBox.Visibility = _desktopLaunchMode ? Visibility.Collapsed : Visibility.Visible;
         WebLaunchButtons.Visibility = WebStatusPanel.Visibility = WebHomeFooter.Visibility =
             _desktopLaunchMode ? Visibility.Collapsed : Visibility.Visible;
         DesktopHomeButton.Visibility = DesktopHomeStatusText.Visibility =

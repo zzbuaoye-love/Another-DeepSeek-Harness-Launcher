@@ -54,7 +54,14 @@
         </NavigationView.FooterMenuItems>
 
         <Grid Margin="0,32,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
             <Grid x:Name="HomeView" Margin="30,0,30,24">
+                <ComboBox x:Name="HomePackComboBox" HorizontalAlignment="Left" VerticalAlignment="Top"
+                          Margin="0,14,125,0" MinWidth="200" MaxWidth="330" Height="32" FontSize="12"
+                          AutomationProperties.Name="启动实例" SelectionChanged="HomePackComboBox_SelectionChanged" />
                 <ComboBox x:Name="LaunchModeComboBox" HorizontalAlignment="Right" VerticalAlignment="Top"
                           Margin="0,14,0,0" MinWidth="112" Height="32" FontSize="12"
                           AutomationProperties.Name="启动方式" SelectionChanged="LaunchModeComboBox_SelectionChanged">
@@ -259,7 +266,7 @@
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1" CornerRadius="12" Padding="16">
                             <StackPanel Spacing="10">
-                                <TextBlock Text="选择管理器程序后立即固定路径，重启启动器后仍然生效。"
+                                <TextBlock Text="可选的外部管理器。整合包可直接在启动器内安装；选择程序后立即固定路径。"
                                            Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" />
                                 <TextBox x:Name="PackForgePathTextBox" Header="程序路径" IsReadOnly="True"
                                          PlaceholderText="尚未固定，自动检测安装版" />
@@ -270,6 +277,8 @@
                                 </StackPanel>
                                 <TextBlock x:Name="PackForgeWorkspaceStatusText" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                <Button x:Name="WorkspaceGetPackForgeButton" Content="获取外部管理器（可选）"
+                                        Click="OpenPackForgeButton_Click" HorizontalAlignment="Left" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -526,18 +535,24 @@
                             </StackPanel>
                             <StackPanel x:Name="PacksLocalPanel" Visibility="Collapsed" Spacing="12">
                                 <TextBlock Text="本地整合包" FontSize="16" FontWeight="SemiBold" />
-                                <TextBlock Text="选择本地 .dspack，交给 DSH PackForge 管理器查看和安装。"
+                                <TextBlock Text="选择本地 .dspack，在启动器中预览并安装到独立实例。"
                                            FontSize="12" TextWrapping="Wrap" Foreground="#AFFFFFFF" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="打开本地包" Click="OpenLocalPackButton_Click" />
-                                    <Button x:Name="LocalGetPackForgeButton" Content="获取 PackForge 管理器" Click="OpenPackForgeButton_Click" />
+                                    <Button Content="安装本地包" Click="OpenLocalPackButton_Click" />
+                                    <Button Content="用外部管理器打开…" Click="ExternalOpenLocalPack_Click" />
                                 </StackPanel>
-                                <Button Content="工作区管理器设置" Click="OpenPackManagerSettings_Click" HorizontalAlignment="Left" />
+                                <Button Content="外部管理器设置（可选）" Click="OpenPackManagerSettings_Click" HorizontalAlignment="Left" />
                                 <TextBlock x:Name="PackManagerStatusText" Text="自动检测安装版；便携版可手动选择，无需设置文件关联。"
                                            FontSize="11" TextWrapping="Wrap" Foreground="#AFFFFFFF" />
+                                <Border Height="1" Background="#1BFFFFFF" />
+                                <TextBlock Text="已安装的整合包" FontSize="16" FontWeight="SemiBold" />
+                                <ComboBox x:Name="InstalledPacksComboBox" HorizontalAlignment="Stretch"
+                                          PlaceholderText="尚未安装整合包" />
+                                <Button Content="在首页使用所选整合包" Click="UseInstalledPack_Click" HorizontalAlignment="Left" />
+                                <TextBlock x:Name="InstalledPackStatusText" FontSize="11" TextWrapping="Wrap" Foreground="#AFFFFFFF" />
                                 <Border Height="1" Background="#1BFFFFFF" Margin="0,4,0,4" />
                                 <TextBlock Text="导出 Profile" FontSize="16" FontWeight="SemiBold" />
-                                <TextBlock Text="使用 PackForge 管理器附带的 dspack CLI 预览或导出。"
+                                <TextBlock Text="使用内置引擎预览或导出，无需安装外部管理器。"
                                            FontSize="11" TextWrapping="Wrap" Foreground="#AFFFFFFF" />
                                 <TextBlock x:Name="PackProfilePathText" Text="尚未选择 Profile 目录"
                                            FontSize="11" TextWrapping="Wrap" Foreground="#AFFFFFFF" />
@@ -577,12 +592,13 @@
                                 <TextBlock x:Name="PackDownloadedPathText" Visibility="Collapsed" FontSize="11"
                                            Foreground="#AFFFFFFF" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button x:Name="DownloadPackButton" Content="下载并交给管理器安装" Click="DownloadPackButton_Click" />
+                                    <Button x:Name="DownloadPackButton" Content="下载并安装" Click="DownloadPackButton_Click" />
+                                    <Button x:Name="LaunchInstalledPackButton" Content="在首页使用" Click="LaunchInstalledPackButton_Click" Visibility="Collapsed" />
                                     <Button Content="打开 GitHub 仓库" Click="OpenPackRepositoryButton_Click" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Button x:Name="ShowPackFileButton" Content="显示文件" Visibility="Collapsed" Click="ShowPackFileButton_Click" />
-                                    <Button x:Name="DetailGetPackForgeButton" Content="获取 PackForge 管理器" Click="OpenPackForgeButton_Click" />
+                                    <Button x:Name="ExternalOpenPackButton" Content="用外部管理器打开" Click="ExternalOpenPack_Click" Visibility="Collapsed" />
                                     <Button Content="管理器设置" Click="OpenPackManagerSettings_Click" />
                                 </StackPanel>
                             </StackPanel>
@@ -590,6 +606,29 @@
                     </StackPanel>
                 </Grid>
             </ScrollViewer>
+            <ContentDialog x:Name="PackInstallDialog" Title="安装整合包" PrimaryButtonText="安装"
+                           CloseButtonText="取消" DefaultButton="Close">
+                <StackPanel Spacing="10">
+                    <TextBlock x:Name="PackInstallSummaryText" TextWrapping="Wrap" />
+                    <TextBlock x:Name="PackInstallTargetText" TextWrapping="Wrap" FontSize="11"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsTextSelectionEnabled="True" />
+                    <ComboBox x:Name="PackInstallProfileComboBox" Header="启动 Profile" HorizontalAlignment="Stretch" />
+                    <TextBlock Text="安装将下载 DSH 和插件依赖，依赖可能执行构建脚本。" TextWrapping="Wrap" FontSize="11"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+            </ContentDialog>
+            <Border x:Name="PackInstallProgressPanel" Grid.Row="1" Visibility="Collapsed"
+                    Margin="24,0,24,24" Padding="16" CornerRadius="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="PackInstallProgressText" TextWrapping="Wrap" FontWeight="SemiBold" />
+                    <ProgressBar x:Name="PackInstallProgressBar" IsIndeterminate="True" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="CancelPackInstallButton" Content="取消安装" Click="CancelPackInstall_Click" />
+                        <Button x:Name="DismissPackInstallButton" Content="关闭提示" Click="DismissPackInstall_Click" Visibility="Collapsed" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
             <Grid x:Name="LogsView" Visibility="Collapsed"
                   Margin="28,22,32,24" RowSpacing="14">
                 <Grid.RowDefinitions>
