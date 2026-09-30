@@ -13,6 +13,9 @@ public static class PackForgeLauncherService
 {
     public const string ReleasesUrl = "https://github.com/DSH-PackForge/dsh-packforge-app/releases";
     private const string ExecutableName = "DSH PackForge.exe";
+    private static readonly Regex ManagerFileName = new(
+        @"^DSH[ ._-]+PackForge(?:[ ._-]+\d[\w.-]*)?\.exe$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public static bool IsManagerExecutable(string path)
     {
@@ -20,9 +23,9 @@ public static class PackForgeLauncherService
         {
             if (!Path.IsPathFullyQualified(path) || !File.Exists(path)) return false;
             var name = Path.GetFileName(path);
-            // The portable release is named "DSH PackForge <version>.exe"; exclude Setup and CLI.
-            return name.Equals(ExecutableName, StringComparison.OrdinalIgnoreCase) ||
-                   Regex.IsMatch(name, @"^DSH PackForge \d[\w.-]*\.exe$", RegexOptions.IgnoreCase);
+            // Downloaded portable assets use dots (DSH.PackForge.0.1.1.exe), while
+            // installed programs use spaces. Keep Setup installers and CLI excluded.
+            return ManagerFileName.IsMatch(name);
         }
         catch (ArgumentException) { return false; }
     }

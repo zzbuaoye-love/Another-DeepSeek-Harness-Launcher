@@ -40,7 +40,16 @@ public sealed partial class MainPage
 
     private async void SelectWorkspacePackManager_Click(object sender, RoutedEventArgs e)
     {
-        if (_demoMode || _packDownloading || _packOpening || _packExporting) return;
+        if (_demoMode)
+        {
+            PackForgeWorkspaceStatusText.Text = "演示模式不会保存路径，请在正常启动的窗口中选择程序。";
+            return;
+        }
+        if (_packDownloading || _packOpening || _packExporting)
+        {
+            PackForgeWorkspaceStatusText.Text = "正在处理整合包，请完成当前操作后再选择管理器。";
+            return;
+        }
         try { await PickPackManagerAsync(PackForgeWorkspaceStatusText); }
         catch (Exception ex) { PackForgeWorkspaceStatusText.Text = $"无法选择管理器：{ex.Message}"; }
     }
@@ -304,10 +313,15 @@ public sealed partial class MainPage
         WinRT.Interop.InitializeWithWindow.Initialize(picker,
             WinRT.Interop.WindowNative.GetWindowHandle(((App)Application.Current).MainWindow));
         var file = await picker.PickSingleFileAsync();
-        if (file is null) return null;
+        if (file is null)
+        {
+            status.Text = "已取消选择，原来的路径设置保持不变。";
+            return null;
+        }
         if (!PackForgeLauncherService.IsManagerExecutable(file.Path))
         {
-            status.Text = "请选择 DSH PackForge.exe 或 DSH PackForge 版本号.exe 便携版程序；Setup 是安装程序。";
+            status.Text = $"未固定路径：{file.Name} 不是可识别的 PackForge 主程序。支持 DSH PackForge.exe、DSH.PackForge.版本号.exe 等安装版或便携版；请勿选择 Setup 安装器或 dspack CLI。";
+            AppendLog($"[ADL] PackForge 路径选择未通过校验：{file.Path}");
             return null;
         }
         if (!LauncherSettings.SavePackForgePath(file.Path))
