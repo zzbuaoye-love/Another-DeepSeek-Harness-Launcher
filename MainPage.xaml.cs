@@ -68,6 +68,10 @@ public sealed partial class MainPage : Page
     public MainPage()
     {
         InitializeComponent();
+        if (_demoMode)
+            _packManagerPath = Environment.GetCommandLineArgs().FirstOrDefault(arg =>
+                arg.StartsWith("--demo-packforge=", StringComparison.OrdinalIgnoreCase))?[17..] ?? "";
+        RefreshPackManagerUi();
         _desktopLaunchMode = !_demoMode && LauncherSettings.LoadLaunchMode() == "desktop";
         LaunchModeComboBox.SelectedIndex = _desktopLaunchMode ? 1 : 0;
         _launchModeReady = true;
@@ -159,7 +163,16 @@ public sealed partial class MainPage : Page
 
         var demoViewArg = Environment.GetCommandLineArgs().FirstOrDefault(arg =>
             arg.StartsWith("--demo-view=", StringComparison.OrdinalIgnoreCase))?[12..].ToLowerInvariant();
-        if (demoViewArg is "workspace-dsh" or "version")
+        if (demoViewArg == "workspace-packforge")
+        {
+            SetDemoStep(5);
+            DispatcherQueue.TryEnqueue(async () =>
+            {
+                await Task.Delay(250);
+                PackForgeWorkspaceCard.StartBringIntoView();
+            });
+        }
+        else if (demoViewArg is "workspace-dsh" or "version")
         {
             SetDemoStep(5);
             EnvironmentView.Loaded += (_, _) => EnvironmentView.ChangeView(null, 280, null, true);
@@ -385,6 +398,7 @@ public sealed partial class MainPage : Page
             }
         }
         if (section == "home" && _initialized && !_demoMode) _ = CheckEnvironmentAsync();
+        if (section is "packs" or "environment") RefreshPackManagerUi();
         if (section == "packs" && !_packsLoaded && !_demoMode) _ = RefreshPacksAsync();
         if (section == "docs" && !_demoMode) _ = InitializeDocsBrowserAsync();
     }

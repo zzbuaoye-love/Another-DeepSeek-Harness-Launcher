@@ -20,6 +20,52 @@ public sealed partial class MainPage
     private string _packManagerPath = LauncherSettings.LoadPackForgePath();
     private string? _packFilePath;
 
+    private void RefreshPackManagerUi()
+    {
+        var manager = PackForgeLauncherService.FindManager(_packManagerPath);
+        var pinned = !string.IsNullOrWhiteSpace(_packManagerPath);
+        PackForgePathTextBox.Text = pinned ? _packManagerPath : manager ?? "";
+        ResetPackForgePathButton.IsEnabled = pinned && !_demoMode;
+        var status = pinned
+            ? manager is not null ? "路径已固定，下次启动仍使用此程序。" : "已固定的程序不存在或不可用，请重新选择路径。"
+            : manager is not null ? "已自动检测到 PackForge，也可选择程序并固定路径。" : "未检测到管理器，可选择已安装的程序或便携版并固定路径。";
+        PackForgeWorkspaceStatusText.Text = status;
+        PackManagerStatusText.Text = manager is not null
+            ? $"{(pinned ? "使用已固定的管理器" : "已检测到管理器")}：{manager}"
+            : status;
+        // A stale pin needs path repair, not another installation prompt.
+        var acquisitionVisibility = manager is not null || pinned ? Visibility.Collapsed : Visibility.Visible;
+        LocalGetPackForgeButton.Visibility = DetailGetPackForgeButton.Visibility = acquisitionVisibility;
+    }
+
+    private async void SelectWorkspacePackManager_Click(object sender, RoutedEventArgs e)
+    {
+        if (_demoMode || _packDownloading || _packOpening || _packExporting) return;
+        try { await PickPackManagerAsync(PackForgeWorkspaceStatusText); }
+        catch (Exception ex) { PackForgeWorkspaceStatusText.Text = $"无法选择管理器：{ex.Message}"; }
+    }
+
+    private void ResetPackForgePath_Click(object sender, RoutedEventArgs e)
+    {
+        if (_demoMode || _packDownloading || _packOpening || _packExporting) return;
+        if (!LauncherSettings.SavePackForgePath(""))
+        {
+            PackForgeWorkspaceStatusText.Text = "无法保存设置，请检查配置目录的写入权限后重试。";
+            return;
+        }
+        _packManagerPath = "";
+        RefreshPackManagerUi();
+    }
+
+    private void RefreshPackForgePath_Click(object sender, RoutedEventArgs e) => RefreshPackManagerUi();
+
+    private async void OpenPackManagerSettings_Click(object sender, RoutedEventArgs e)
+    {
+        ShellNavigation.SelectedItem = ShellNavigation.MenuItems[1];
+        await Task.Delay(100);
+        PackForgeWorkspaceCard.StartBringIntoView();
+    }
+
     private async Task RefreshPacksAsync()
     {
         if (_packsLoading || _demoMode) return;
@@ -135,11 +181,17 @@ public sealed partial class MainPage
             var path = await PackForgeMarketService.TryGetVerifiedLocalPathAsync(pack);
             if (path is null)
             {
+                RefreshPackManagerUi();
+                var managerHint = !string.IsNullOrWhiteSpace(_packManagerPath)
+                    ? "将使用工作区中固定的 PackForge 程序打开；程序路径失效时可在工作区重新选择。"
+                    : PackForgeLauncherService.FindManager() is not null
+                        ? "将使用已检测到的 PackForge 管理器打开。"
+                        : "尚未检测到管理器，可获取安装版或在工作区选择并固定便携版程序。";
                 var dialog = new ContentDialog
                 {
                     XamlRoot = XamlRoot,
                     Title = "下载整合包",
-                    Content = $"{pack.Title} v{pack.Version}\n作者：{pack.Author}\n大小：{pack.Size:N0} 字节\n\n下载并校验后，打开 DSH PackForge 管理器查看和安装。未安装管理器时，可获取安装版或选择已有的便携版程序。",
+                    Content = $"{pack.Title} v{pack.Version}\n作者：{pack.Author}\n大小：{pack.Size:N0} 字节\n\n下载并校验后，在 DSH PackForge 管理器中确认整合包安装。{managerHint}",
                     PrimaryButtonText = "下载",
                     CloseButtonText = "取消",
                     DefaultButton = ContentDialogButton.Close
@@ -181,6 +233,13 @@ public sealed partial class MainPage
             {
                 status.Text = prefix + "已发送打开管理器的请求，请在管理器中确认安装。";
                 AppendLog($"[ADL] 已发送整合包打开请求：{path}");
+                return;
+            }
+            RefreshPackManagerUi();
+            if (!string.IsNullOrWhiteSpace(_packManagerPath))
+            {
+                status.Text = prefix + "固定的 PackForge 程序未能启动，请到工作区重新选择程序路径；整合包文件已保留。";
+                AppendLog($"[ADL] 固定的 PackForge 程序不可用：{_packManagerPath}");
                 return;
             }
             status.Text = prefix + "尚未找到可打开此包的管理器。请获取 PackForge 管理器或选择已有程序后重试；文件已保留。";
@@ -251,19 +310,15 @@ public sealed partial class MainPage
             status.Text = "请选择 DSH PackForge.exe 或 DSH PackForge 版本号.exe 便携版程序；Setup 是安装程序。";
             return null;
         }
+        if (!LauncherSettings.SavePackForgePath(file.Path))
+        {
+            status.Text = "无法固定路径：设置保存失败，请检查配置目录的写入权限后重试。";
+            return null;
+        }
         _packManagerPath = file.Path;
-        LauncherSettings.SavePackForgePath(file.Path);
-        status.Text = $"已保存管理器：{file.Path}，可以重新打开整合包。";
-        PackManagerStatusText.Text = status.Text;
+        RefreshPackManagerUi();
+        status.Text = $"已固定管理器：{file.Path}，重启启动器后仍然生效。";
         return file.Path;
-    }
-
-    private async void SelectPackManagerButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_demoMode || _packDownloading || _packOpening) return;
-        var status = PackDetailCard.Visibility == Visibility.Visible ? PackActionStatusText : PackManagerStatusText;
-        try { await PickPackManagerAsync(status); }
-        catch (Exception ex) { status.Text = $"无法选择管理器：{ex.Message}"; }
     }
 
     private void OpenPackForgeButton_Click(object sender, RoutedEventArgs e) =>
@@ -311,10 +366,14 @@ public sealed partial class MainPage
             return;
         }
         RefreshProcessPath();
-        var cli = FindOnPath("dspack.exe");
+        var cli = PackForgeLauncherService.FindBundledCli(_packManagerPath) ?? FindOnPath("dspack.exe");
         if (cli is null)
         {
-            PackExportStatusText.Text = "未找到 dspack CLI。请安装 DSH PackForge Setup，然后重新打开启动器。";
+            PackExportStatusText.Text = PackForgeLauncherService.FindManager(_packManagerPath) is not null
+                ? "此管理器旁未找到 dspack CLI。便携版可在 PackForge 界面中导出；也可将独立 dspack CLI 加入 PATH。"
+                : !string.IsNullOrWhiteSpace(_packManagerPath)
+                    ? "固定的管理器路径不可用，请在工作区重新选择程序。"
+                    : "未找到 dspack CLI，请在工作区选择 PackForge 安装版程序，或将独立 CLI 加入 PATH。";
             return;
         }
         if (!preview)

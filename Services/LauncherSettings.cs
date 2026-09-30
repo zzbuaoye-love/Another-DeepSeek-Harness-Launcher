@@ -228,9 +228,9 @@ internal static class LauncherSettings
         return "";
     }
 
-    public static void SavePackForgePath(string path) => SaveValue("PackForgePath", path);
+    public static bool SavePackForgePath(string path) => SaveValue("PackForgePath", path);
 
-    private static void SaveValue(string key, string value)
+    private static bool SaveValue(string key, string value)
     {
         try
         {
@@ -240,7 +240,8 @@ internal static class LauncherSettings
             data[key] = value;
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
             File.WriteAllText(SettingsPath, data.ToJsonString());
+            return true;
         }
-        catch { /* Keep the current in-memory choice when settings cannot be written. */ }
+        catch { return false; /* Keep the current in-memory choice when settings cannot be written. */ }
     }
 }

@@ -29,7 +29,9 @@ public static class PackForgeLauncherService
 
     public static string? FindManager(string manualPath = "")
     {
-        if (IsManagerExecutable(manualPath)) return manualPath;
+        // A saved path is pinned: never silently switch to a different installation.
+        if (!string.IsNullOrWhiteSpace(manualPath))
+            return IsManagerExecutable(manualPath) ? manualPath : null;
         foreach (var hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
         foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
         {
@@ -87,6 +89,7 @@ public static class PackForgeLauncherService
             }
             catch (Win32Exception ex) when (ex.NativeErrorCode is 2 or 3 or 1155) { }
         }
+        if (!string.IsNullOrWhiteSpace(manualManagerPath)) return PackOpenResult.ManagerMissing;
         // Query the Windows default handler before ShellExecute, avoiding its "no application" error.
         if (!HasFileAssociation()) return PackOpenResult.ManagerMissing;
         try
@@ -98,6 +101,14 @@ public static class PackForgeLauncherService
         {
             return PackOpenResult.ManagerMissing;
         }
+    }
+
+    public static string? FindBundledCli(string manualManagerPath = "")
+    {
+        var manager = FindManager(manualManagerPath);
+        if (manager is null) return null;
+        var cli = Path.Combine(Path.GetDirectoryName(manager)!, "resources", "cli", "dspack.exe");
+        return File.Exists(cli) ? cli : null;
     }
 
     public static bool HasFileAssociation()

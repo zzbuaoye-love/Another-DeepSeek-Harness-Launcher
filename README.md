@@ -28,9 +28,9 @@ ADL `不内置` DeepSeek Harness，`也不处理 API 密钥`；
 
 ## 整合包
 
-侧边栏“整合包”读取 [DSH PackForge 市场](https://github.com/DSH-PackForge/dsh-pack-market) 的 schemaVersion 2 索引，采用与插件页一致的浏览列表和独立详情页，可搜索、查看摘要和来源仓库。缺少文件大小或 SHA-256 的条目也会显示，但仅提供仓库入口。下载 `.dspack` 时会核对索引中的文件大小与 SHA-256，然后打开 [DSH PackForge 管理器](https://github.com/DSH-PackForge/dsh-packforge-app) 查看和安装；安装确认在管理器中完成。启动器优先直接启动已检测到或手动指定的管理器，再使用有效的系统文件关联。管理器缺失时会提示获取 Setup 或选择已有程序，已下载文件保留，并可点击“打开已下载包”重试；重试前再次校验，校验通过的文件无需重新下载。“显示文件”可定位本地包。本地 `.dspack`、便携版管理器选择与 Profile 导出位于“导入 / 导出”标签中。
+侧边栏“整合包”读取 [DSH PackForge 市场](https://github.com/DSH-PackForge/dsh-pack-market) 的 schemaVersion 2 索引，采用与插件页一致的浏览列表和独立详情页，可搜索、查看摘要和来源仓库。缺少文件大小或 SHA-256 的条目也会显示，但仅提供仓库入口。下载 `.dspack` 时会核对索引中的文件大小与 SHA-256，然后打开 [DSH PackForge 管理器](https://github.com/DSH-PackForge/dsh-packforge-app) 查看和安装；整合包安装确认在管理器中完成。“工作区 → PackForge 管理器”可选择安装版 `DSH PackForge.exe` 或便携版 `DSH PackForge 版本号.exe`，选择后立即固定并保存路径，重启仍生效。固定后整合包页隐藏获取管理器入口，直接使用该程序，无需文件关联；路径失效时提示回到工作区重新选择，不会切换到其他程序。“恢复自动检测”可取消固定。未固定时优先检测安装版，再使用有效的系统文件关联；管理器缺失时会提示获取 Setup 或选择已有程序。已下载文件保留，并可点击“打开已下载包”重试；重试前再次校验，校验通过的文件无需重新下载。“显示文件”可定位本地包。本地 `.dspack` 与 Profile 导出位于“导入 / 导出”标签中。
 
-导出 Profile 使用管理器安装版随附的 `dspack` CLI：先选择 Profile 目录和输出目录，可预览扫描结果，再导出 manifest v5 / `.dspack` v3。若未安装管理器或 CLI 不在 PATH 中，页面会提示安装。格式规范见 [DSH-PackForge](https://github.com/DSH-PackForge/DSH-PackForge)。
+导出 Profile 使用管理器安装版随附的 `dspack` CLI：优先从所选程序旁的 `resources/cli/dspack.exe` 查找，再查找 PATH。先选择 Profile 目录和输出目录，可预览扫描结果，再导出 manifest v5 / `.dspack` v3。便携版未附带 CLI 时可使用管理器界面导出，或将独立 CLI 加入 PATH。格式规范见 [DSH-PackForge](https://github.com/DSH-PackForge/DSH-PackForge)。
 
 ## 构建和运行
 
