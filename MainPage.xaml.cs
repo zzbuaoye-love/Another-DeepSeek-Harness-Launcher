@@ -68,6 +68,10 @@ public sealed partial class MainPage : Page
     public MainPage()
     {
         InitializeComponent();
+        _desktopLaunchMode = !_demoMode && LauncherSettings.LoadLaunchMode() == "desktop";
+        LaunchModeComboBox.SelectedIndex = _desktopLaunchMode ? 1 : 0;
+        _launchModeReady = true;
+        UpdateHomeLaunchMode();
         IsTabStop = true;
         Loaded += (s, e) => Focus(FocusState.Programmatic);
         PointerPressed += (s, e) => Focus(FocusState.Programmatic);
@@ -116,6 +120,7 @@ public sealed partial class MainPage : Page
 
     private void InitializeDemoMode()
     {
+        InitializeDesktopDemo();
         _configuredWebPort = _activeWebPort = 3080;
         WebPortTextBox.Text = "3080";
         WebPortStatusText.Text = "演示模式 · 不修改本机设置";
@@ -173,6 +178,54 @@ public sealed partial class MainPage : Page
         {
             SetDemoStep(6);
             PluginTab_Click(PluginSourcesTab, new RoutedEventArgs());
+        }
+        else if (demoViewArg is "desktop" or "desktop-missing")
+        {
+            if (demoViewArg == "desktop-missing")
+            {
+                _desktopClient = null;
+                UpdateDesktopUi();
+            }
+            SetDemoStep(5);
+            DispatcherQueue.TryEnqueue(async () =>
+            {
+                await Task.Delay(250);
+                DesktopClientCard.StartBringIntoView();
+            });
+        }
+        else if (demoViewArg is "home-desktop" or "home-desktop-missing" or "home-mode-roundtrip")
+        {
+            if (demoViewArg == "home-desktop-missing")
+            {
+                _desktopClient = null;
+                UpdateDesktopUi();
+            }
+            LaunchModeComboBox.SelectedIndex = 1;
+            if (demoViewArg == "home-mode-roundtrip") LaunchModeComboBox.SelectedIndex = 0;
+        }
+        else if (demoViewArg is "packs" or "packforge" or "packs-export" or "packs-detail" or "packs-unverified")
+        {
+            _marketPacks =
+            [
+                new MarketPack("all-about-whales", "大肥鱼套装", "让 DSH 的 Web 界面更有趣，包含主题与多个常用插件。",
+                    "hxh230802", "1.0.0", "profile", 5, "0.1.0-rc.8", "DSH-PackForge", "all-about-whales",
+                    "https://github.com/DSH-PackForge/all-about-whales/releases/download/v1.0.0/all-about-whales-1.0.0.dspack",
+                    new string('0', 64), 6670, 6, 4, 0)
+            ];
+            var marketSnapshot = Environment.GetCommandLineArgs().FirstOrDefault(arg =>
+                arg.StartsWith("--demo-market=", StringComparison.OrdinalIgnoreCase))?[14..];
+            if (!string.IsNullOrWhiteSpace(marketSnapshot))
+                _marketPacks = JsonSerializer.Deserialize<MarketPack[]>(File.ReadAllText(marketSnapshot)) ?? [];
+            _packsLoaded = true;
+            PacksStatusText.Text = "演示目录 · 不联网、不下载整合包";
+            FilterPacks();
+            ShellNavigation.SelectedItem = ShellNavigation.MenuItems[3];
+            if (demoViewArg == "packs-detail") PacksList.SelectedIndex = 0;
+            if (demoViewArg == "packs-unverified") PacksList.SelectedItem = _marketPacks.FirstOrDefault(pack => !pack.CanDownload);
+            DownloadPackButton.IsEnabled = false;
+            PreviewPackButton.IsEnabled = false;
+            ExportPackButton.IsEnabled = false;
+            if (demoViewArg == "packs-export") PackTab_Click(LocalPacksTab, new RoutedEventArgs());
         }
 
         var captureArg = Environment.GetCommandLineArgs().FirstOrDefault(arg =>
@@ -253,7 +306,7 @@ public sealed partial class MainPage : Page
         _serviceReady = _demoStep >= 4;
         _starting = _demoStep is >= 1 and <= 3;
         LaunchButton.IsEnabled = !_starting;
-        LaunchButton.Content = _serviceReady ? "停止 Harness" : _starting ? "启动中…" : "启动 Harness";
+        LaunchButton.Content = _serviceReady ? "停止 Web 版" : _starting ? "启动中…" : "启动 Web 版";
         OpenWebButton.Visibility = _serviceReady ? Visibility.Visible : Visibility.Collapsed;
         OpenWebButton.IsEnabled = _serviceReady;
         LaunchProgress.IsActive = _starting;
@@ -318,6 +371,7 @@ public sealed partial class MainPage : Page
         HomeView.Visibility = section == "home" ? Visibility.Visible : Visibility.Collapsed;
         EnvironmentView.Visibility = section == "environment" ? Visibility.Visible : Visibility.Collapsed;
         PluginsView.Visibility = section == "plugins" ? Visibility.Visible : Visibility.Collapsed;
+        PacksView.Visibility = section == "packs" ? Visibility.Visible : Visibility.Collapsed;
         LogsView.Visibility = section == "logs" ? Visibility.Visible : Visibility.Collapsed;
         AppearanceView.Visibility = section == "appearance" ? Visibility.Visible : Visibility.Collapsed;
         DocsView.Visibility = section == "docs" ? Visibility.Visible : Visibility.Collapsed;
@@ -331,6 +385,7 @@ public sealed partial class MainPage : Page
             }
         }
         if (section == "home" && _initialized && !_demoMode) _ = CheckEnvironmentAsync();
+        if (section == "packs" && !_packsLoaded && !_demoMode) _ = RefreshPacksAsync();
         if (section == "docs" && !_demoMode) _ = InitializeDocsBrowserAsync();
     }
 
@@ -498,6 +553,7 @@ public sealed partial class MainPage : Page
 
     private async Task CheckEnvironmentAsync()
     {
+        _ = RefreshDesktopClientAsync();
         NodeStatusText.Text = "检测中…";
         NpxStatusText.Text = "检测中…";
         var manualValid = _manualNodeMode && !string.IsNullOrWhiteSpace(_manualNodePath) &&
@@ -542,7 +598,7 @@ public sealed partial class MainPage : Page
                 _serviceReady = false;
                 _runningDshVersion = null;
                 LaunchButton.IsEnabled = true;
-                LaunchButton.Content = "启动 Harness";
+                LaunchButton.Content = "启动 Web 版";
                 ServiceStatusText.Text = "本地服务未启动";
                 OpenWebButton.IsEnabled = false;
                 OpenWebButton.Visibility = Visibility.Collapsed;
@@ -650,13 +706,17 @@ public sealed partial class MainPage : Page
 
     private void UpdateBranding()
     {
-        var showDsh = _dshVersion is not null || _starting || _serviceReady || _service is { HasExited: false };
+        var showDsh = _desktopLaunchMode || _dshVersion is not null || _starting || _serviceReady || _service is { HasExited: false };
         BrandLogo.Width = BrandLogo.Height = showDsh ? 72 : 48;
         BrandLogo.Source = showDsh
             ? new Microsoft.UI.Xaml.Media.Imaging.SvgImageSource(new Uri("ms-appx:///Assets/DeepSeekHarness.svg"))
             : new Microsoft.UI.Xaml.Media.Imaging.SvgImageSource(new Uri("ms-appx:///Assets/AppIconHome.svg"));
         BrandTitle.Text = showDsh ? "DeepSeek Harness" : "Another";
-        BrandSubtitle.Text = _serviceReady
+        BrandSubtitle.Text = _desktopLaunchMode
+            ? _desktopClient is { } desktop
+                ? string.IsNullOrWhiteSpace(desktop.Version) ? "官方桌面客户端" : $"官方桌面客户端 · v{desktop.Version}"
+                : "安装官方桌面客户端，即可直接启动"
+            : _serviceReady
             ? !string.IsNullOrEmpty(_runningDshVersion)
                 ? $"服务运行中 · v{_runningDshVersion}"
                 : $"服务运行中 · 端口 {_activeWebPort}"
@@ -829,7 +889,7 @@ public sealed partial class MainPage : Page
     {
         PluginsList.Items.Clear();
         _installedPlugins.Clear();
-        PluginsEmptyText.Text = "尚未找到 DSH Web 配置。启动 Harness 后再刷新。";
+        PluginsEmptyText.Text = "尚未找到 DSH Web 配置。启动 Web 版后再刷新。";
         var dshHome = Environment.GetEnvironmentVariable("DSH_HOME");
         if (string.IsNullOrWhiteSpace(dshHome))
             dshHome = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh");
@@ -1335,7 +1395,7 @@ public sealed partial class MainPage : Page
             LaunchProgress.IsActive = false;
             LaunchProgress.Visibility = Visibility.Collapsed;
             LaunchButton.IsEnabled = true;
-            LaunchButton.Content = "启动 Harness";
+            LaunchButton.Content = "启动 Web 版";
             ShowLaunchErrorTip(ex.Message);
         }
         finally
@@ -1389,7 +1449,7 @@ public sealed partial class MainPage : Page
     private void ApplyRunningUiState()
     {
         LaunchButton.IsEnabled = true;
-        LaunchButton.Content = "停止 Harness";
+        LaunchButton.Content = "停止 Web 版";
         LaunchProgress.IsActive = false;
         LaunchProgress.Visibility = Visibility.Collapsed;
         OpenWebButton.IsEnabled = true;
@@ -1488,7 +1548,7 @@ public sealed partial class MainPage : Page
         _runningDshVersion = null;
         UpdateBranding();
         LaunchButton.IsEnabled = true;
-        LaunchButton.Content = "启动 Harness";
+        LaunchButton.Content = "启动 Web 版";
         OpenWebButton.IsEnabled = false;
         OpenPluginManagerButton.IsEnabled = false;
         OpenWebButton.Visibility = Visibility.Collapsed;
@@ -1522,7 +1582,7 @@ public sealed partial class MainPage : Page
         _stoppingService = true;
         LaunchButton.IsEnabled = false;
         LaunchButton.Content = "正在停止…";
-        ServiceStatusText.Text = "正在停止 Harness…";
+        ServiceStatusText.Text = "正在停止 Web 版…";
         try
         {
             StopService();
@@ -1546,7 +1606,7 @@ public sealed partial class MainPage : Page
                 throw new InvalidOperationException("DSH 仍在响应，请查看运行日志。");
             _serviceReady = false;
             _runningDshVersion = null;
-            LaunchButton.Content = "启动 Harness";
+            LaunchButton.Content = "启动 Web 版";
             OpenWebButton.Visibility = Visibility.Collapsed;
             OpenWebButton.IsEnabled = false;
             OpenPluginManagerButton.IsEnabled = false;
@@ -1556,7 +1616,7 @@ public sealed partial class MainPage : Page
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or
                                    System.ComponentModel.Win32Exception or OperationCanceledException)
         {
-            AppendLog($"[ADL] 停止 Harness 失败：{ex.Message}");
+            AppendLog($"[ADL] 停止 Web 版失败：{ex.Message}");
             _serviceReady = await IsWebServerRespondingAsync();
             if (_serviceReady) ApplyRunningUiState();
             ServiceStatusText.Text = $"停止失败：{ex.Message.Trim()}";

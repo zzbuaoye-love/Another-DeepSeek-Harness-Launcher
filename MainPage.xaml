@@ -34,11 +34,14 @@
             <NavigationViewItem Content="插件" Tag="plugins">
                 <NavigationViewItem.Icon><ImageIcon Source="ms-appx:///Assets/Icons/puzzle.svg" /></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem x:Name="LogsItem" Content="日志" Tag="logs">
-                <NavigationViewItem.Icon><ImageIcon Source="ms-appx:///Assets/Icons/scroll-text.svg" /></NavigationViewItem.Icon>
+            <NavigationViewItem Content="整合包" Tag="packs">
+                <NavigationViewItem.Icon><ImageIcon Source="ms-appx:///Assets/Icons/package.svg" /></NavigationViewItem.Icon>
             </NavigationViewItem>
         </NavigationView.MenuItems>
         <NavigationView.FooterMenuItems>
+            <NavigationViewItem x:Name="LogsItem" Content="日志" Tag="logs">
+                <NavigationViewItem.Icon><ImageIcon Source="ms-appx:///Assets/Icons/scroll-text.svg" /></NavigationViewItem.Icon>
+            </NavigationViewItem>
             <NavigationViewItem x:Name="DocsItem" Content="文档" Tag="docs">
                 <NavigationViewItem.Icon><ImageIcon Source="ms-appx:///Assets/Icons/book-open.svg" /></NavigationViewItem.Icon>
             </NavigationViewItem>
@@ -52,6 +55,12 @@
 
         <Grid Margin="0,32,0,0">
             <Grid x:Name="HomeView" Margin="30,0,30,24">
+                <ComboBox x:Name="LaunchModeComboBox" HorizontalAlignment="Right" VerticalAlignment="Top"
+                          Margin="0,14,0,0" MinWidth="112" Height="32" FontSize="12"
+                          AutomationProperties.Name="启动方式" SelectionChanged="LaunchModeComboBox_SelectionChanged">
+                    <ComboBoxItem Content="常规版" Tag="web" />
+                    <ComboBoxItem Content="桌面版" Tag="desktop" />
+                </ComboBox>
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
                             MaxWidth="420" Spacing="0">
                     <Image x:Name="BrandLogo" Source="ms-appx:///Assets/AppIconBlackTile.svg"
@@ -62,19 +71,27 @@
                                FontSize="12" Foreground="#A6FFFFFF" HorizontalAlignment="Center"
                                Margin="0,6,0,0" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,28,0,0" Spacing="8">
-                        <Button x:Name="LaunchButton" Content="启动 Harness" Click="LaunchButton_Click"
+                        <StackPanel x:Name="WebLaunchButtons" Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="LaunchButton" Content="启动 Web 版" Click="LaunchButton_Click"
                                 Width="158" Height="40" Background="White" Foreground="#171717" />
                         <Button x:Name="OpenWebButton" Content="打开界面" Click="OpenWebButton_Click"
                                 Visibility="Collapsed" IsEnabled="False" Height="40" />
+                        </StackPanel>
+                        <Button x:Name="DesktopHomeButton" Content="安装桌面版" Click="DesktopHomeButton_Click"
+                                Width="158" Height="40" Background="White" Foreground="#171717"
+                                Visibility="Collapsed" />
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="0,18,0,0">
+                    <StackPanel x:Name="WebStatusPanel" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="0,18,0,0">
                         <ProgressRing x:Name="LaunchProgress" Width="16" Height="16" IsActive="False" Visibility="Collapsed" />
                         <TextBlock x:Name="ServiceStatusText" Text="本地服务未启动" FontSize="12"
                                    Foreground="#B6FFFFFF" VerticalAlignment="Center" />
                     </StackPanel>
+                    <TextBlock x:Name="DesktopHomeStatusText" Text="正在检测官方桌面客户端…" FontSize="11"
+                               Foreground="#B6FFFFFF" HorizontalAlignment="Center" Margin="0,18,0,0"
+                               TextWrapping="Wrap" MaxWidth="400" Visibility="Collapsed" />
                 </StackPanel>
 
-                <Grid VerticalAlignment="Bottom" ColumnSpacing="14">
+                <Grid x:Name="WebHomeFooter" VerticalAlignment="Bottom" ColumnSpacing="14">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -235,6 +252,39 @@
                             </StackPanel>
                         </Border>
                     </StackPanel>
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="官方桌面客户端" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <Border x:Name="DesktopClientCard"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="12" Padding="16">
+                            <StackPanel Spacing="10">
+                                <TextBlock x:Name="DesktopClientStatusText" Text="正在检测…"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                                <TextBlock Text="桌面版自带运行环境。工作区、账户与更新可在官方客户端中设置。"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                <TextBlock x:Name="DesktopClientPathText" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button x:Name="DesktopLaunchButton" Content="启动桌面版" Click="DesktopLaunchButton_Click"
+                                            IsEnabled="False" />
+                                    <Button x:Name="DesktopInstallButton" Content="下载安装" Click="DesktopInstallButton_Click" />
+                                    <Button Content="刷新检测" Click="RefreshDesktopButton_Click" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button x:Name="DesktopSelectButton" Content="选择已安装的程序…" Click="SelectDesktopButton_Click" />
+                                    <Button Content="官方网站" Click="DesktopWebsiteButton_Click" />
+                                </StackPanel>
+                                <ProgressBar x:Name="DesktopInstallProgressBar" Visibility="Collapsed" IsIndeterminate="False" />
+                                <TextBlock x:Name="DesktopInstallStatusText" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                <Button x:Name="DesktopCancelInstallButton" Content="取消下载" Click="CancelDesktopInstallButton_Click"
+                                        HorizontalAlignment="Left" Visibility="Collapsed" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
 
@@ -339,7 +389,7 @@
                                         <TextBlock Text="Web profile 插件" FontSize="16" FontWeight="SemiBold" />
                                         <Button Content="刷新" Click="RefreshPluginsButton_Click" HorizontalAlignment="Right" />
                                     </Grid>
-                                    <TextBlock x:Name="PluginsEmptyText" Text="尚未找到 DSH Web 配置。启动 Harness 后再刷新。"
+                                    <TextBlock x:Name="PluginsEmptyText" Text="尚未找到 DSH Web 配置。启动 Web 版后再刷新。"
                                                TextWrapping="Wrap" Foreground="#AFFFFFFF" />
                                     <ListView x:Name="PluginsList" Visibility="Collapsed" SelectionMode="None" MaxHeight="310" />
                                     <Button x:Name="OpenPluginManagerButton" Content="打开 DSH Web 插件管理" Click="OpenPluginManager_Click"
@@ -396,6 +446,119 @@
                 </Grid>
             </ScrollViewer>
 
+            <ScrollViewer x:Name="PacksView" Visibility="Collapsed" HorizontalScrollBarVisibility="Disabled">
+                <Grid Margin="28,18,32,24">
+                    <StackPanel x:Name="PackCatalogView" Spacing="8">
+                        <Grid>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="整合包" FontSize="22" FontWeight="SemiBold" />
+                                <TextBlock x:Name="PacksStatusText" Text="正在获取官方整合包…" FontSize="11"
+                                           Foreground="#AFFFFFFF" TextWrapping="Wrap" Margin="0,0,64,0" />
+                            </StackPanel>
+                            <Button x:Name="RefreshPacksButton" Content="刷新" Click="RefreshPacksButton_Click"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,1">
+                            <Button x:Name="BrowsePacksTab" Tag="browse" Content="浏览" Click="PackTab_Click"
+                                    Height="29" Padding="12,3" FontSize="12" CornerRadius="7" BorderThickness="0"
+                                    Background="#24FFFFFF" />
+                            <Button x:Name="LocalPacksTab" Tag="local" Content="导入 / 导出" Click="PackTab_Click"
+                                    Height="29" Padding="12,3" FontSize="12" CornerRadius="7" BorderThickness="0"
+                                    Background="Transparent" Foreground="#AFFFFFFF" />
+                        </StackPanel>
+                        <Grid>
+                            <StackPanel x:Name="PacksBrowsePanel" Spacing="7">
+                                <TextBox x:Name="PacksSearchTextBox" PlaceholderText="搜索整合包、作者或功能"
+                                         TextChanged="PacksSearchTextBox_TextChanged" Height="33" FontSize="12" />
+                                <TextBlock x:Name="PacksResultText" Text="正在载入…" FontSize="11" Foreground="#AFFFFFFF" />
+                                <ListView x:Name="PacksList" SelectionChanged="PacksList_SelectionChanged" MaxHeight="275"
+                                          SelectionMode="Single" Background="Transparent" BorderThickness="0">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem">
+                                            <Setter Property="Padding" Value="0" />
+                                            <Setter Property="Margin" Value="0" />
+                                            <Setter Property="MinHeight" Value="0" />
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                            <Setter Property="Background" Value="Transparent" />
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="#1BFFFFFF" BorderThickness="0,0,0,1" Padding="7,8">
+                                                <Grid ColumnSpacing="10">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="36" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                    <Border Width="36" Height="36" CornerRadius="8" Background="#264A678A" VerticalAlignment="Center">
+                                                        <Image Source="ms-appx:///Assets/Icons/package.svg" Width="21" Height="21" Stretch="Uniform" />
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" Spacing="2">
+                                                        <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding Summary}" FontSize="10" Foreground="#AFFFFFFF" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding Description}" FontSize="10" Foreground="#8FFFFFFF" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                                <TextBlock x:Name="PacksEmptyText" Text="市场中没有匹配的整合包。"
+                                           Visibility="Collapsed" FontSize="11" Foreground="#AFFFFFFF" />
+                            </StackPanel>
+                            <StackPanel x:Name="PacksLocalPanel" Visibility="Collapsed" Spacing="12">
+                                <TextBlock Text="本地整合包" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="选择本地 .dspack，交给 DSH PackForge 管理器查看和安装。"
+                                           FontSize="12" TextWrapping="Wrap" Foreground="#AFFFFFFF" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="打开本地包" Click="OpenLocalPackButton_Click" />
+                                    <Button Content="获取 PackForge 管理器" Click="OpenPackForgeButton_Click" />
+                                </StackPanel>
+                                <Border Height="1" Background="#1BFFFFFF" Margin="0,4,0,4" />
+                                <TextBlock Text="导出 Profile" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="使用 PackForge 管理器附带的 dspack CLI 预览或导出。"
+                                           FontSize="11" TextWrapping="Wrap" Foreground="#AFFFFFFF" />
+                                <TextBlock x:Name="PackProfilePathText" Text="尚未选择 Profile 目录"
+                                           FontSize="11" TextWrapping="Wrap" Foreground="#AFFFFFFF" />
+                                <Button Content="选择 Profile 目录" Click="SelectPackProfileButton_Click" HorizontalAlignment="Left" />
+                                <TextBlock x:Name="PackOutputPathText" Text="尚未选择输出目录"
+                                           FontSize="11" TextWrapping="Wrap" Foreground="#AFFFFFFF" />
+                                <Button Content="选择输出目录" Click="SelectPackOutputButton_Click" HorizontalAlignment="Left" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button x:Name="PreviewPackButton" Content="预览内容" Click="PreviewPackButton_Click" />
+                                    <Button x:Name="ExportPackButton" Content="导出 .dspack" Click="ExportPackButton_Click" />
+                                </StackPanel>
+                                <TextBlock x:Name="PackExportStatusText" FontSize="11" Foreground="#AFFFFFFF"
+                                           TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel x:Name="PackDetailCard" Visibility="Collapsed" Spacing="15">
+                        <Button Content="← 返回浏览" Click="BackToPacks_Click" HorizontalAlignment="Left" />
+                        <Border Background="#12FFFFFF" CornerRadius="12" Padding="16">
+                            <StackPanel Spacing="12">
+                                <Grid ColumnSpacing="13">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="52" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <Border Width="52" Height="52" CornerRadius="11" Background="#264A678A" VerticalAlignment="Top">
+                                        <Image Source="ms-appx:///Assets/Icons/package.svg" Width="30" Height="30" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Spacing="5">
+                                        <TextBlock x:Name="PackDetailTitle" FontSize="20" FontWeight="SemiBold" TextWrapping="WrapWholeWords" />
+                                        <TextBlock x:Name="PackDetailMeta" FontSize="12" Foreground="#BFFFFFFF" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock x:Name="PackDetailContents" FontSize="11" Foreground="#FF9FC6F5" TextWrapping="Wrap" />
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="功能介绍" FontSize="14" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="PackDetailDescription" FontSize="13" Foreground="#DFFFFFFF" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <TextBlock x:Name="PackActionStatusText" FontSize="12" Foreground="#AFFFFFFF" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button x:Name="DownloadPackButton" Content="下载并交给管理器安装" Click="DownloadPackButton_Click" />
+                                    <Button Content="打开 GitHub 仓库" Click="OpenPackRepositoryButton_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
             <Grid x:Name="LogsView" Visibility="Collapsed"
                   Margin="28,22,32,24" RowSpacing="14">
                 <Grid.RowDefinitions>
@@ -410,7 +573,7 @@
                 <ScrollViewer x:Name="LogScroller" Grid.Row="1"
                               VerticalScrollBarVisibility="Auto">
                     <TextBlock x:Name="LogText" FontFamily="Consolas" FontSize="11"
-                               Text="[ADL] 准备就绪。选择目录后启动 Harness。"
+                               Text="[ADL] 准备就绪。选择目录后启动 Web 版。"
                                Foreground="#CFFFFFFF" TextWrapping="Wrap"
                                IsTextSelectionEnabled="True" />
                 </ScrollViewer>

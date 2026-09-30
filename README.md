@@ -10,7 +10,7 @@
 
 ## 简介
 ADL/YADL
-首次启动 Harness 时，npx 需要联网获取官方包
+首次启动 Web 版时，npx 需要联网获取官方包
 ADL `不内置` DeepSeek Harness，`也不处理 API 密钥`；
 这些配置在 Harness 自身界面中完成，未来或许会在APP内支持直接的预设置
 
@@ -19,6 +19,18 @@ ADL `不内置` DeepSeek Harness，`也不处理 API 密钥`；
 > 必要的安装要求`pnpm`否则无法安装成功
 
 默认的 1024Store 属于第三方目录，不是 DeepSeek 官方目录；其热门排序依据关联 GitHub 仓库 Star，不能代表插件的安装量或质量
+
+## 官方桌面客户端
+
+首页右上角的下拉栏可切换“常规版”和“桌面版”，并记住选择。常规版启动本地 Web 服务；桌面版启动官方 DeepSeek Harness 客户端，未安装时按钮进入下载安装流程。切换方式不会停止已运行的 Web 服务。“工作区 → 官方桌面客户端”提供版本与路径检测、启动、安装/更新、取消下载，以及手动选择程序。
+
+安装包来自 [DeepSeek 官网](https://www.deepseek.com/harness/) 的 Windows x64 最新下载入口。启动器下载后验证 Windows Authenticode 签名和 DeepSeek 发布者，再打开交互式安装程序；安装结果以重新检测到程序为准。桌面版自带运行时，工作区和更新在官方客户端中管理。启动器的工作目录、npm 版本和 Web 端口设置用于 Web 版。
+
+## 整合包
+
+侧边栏“整合包”读取 [DSH PackForge 市场](https://github.com/DSH-PackForge/dsh-pack-market) 的 schemaVersion 2 索引，采用与插件页一致的浏览列表和独立详情页，可搜索、查看摘要和来源仓库。缺少文件大小或 SHA-256 的条目也会显示，但仅提供仓库入口。下载 `.dspack` 时会核对索引中的文件大小与 SHA-256，然后通过系统文件关联交给 [DSH PackForge 管理器](https://github.com/DSH-PackForge/dsh-packforge-app) 查看和安装；安装确认在管理器中完成。本地 `.dspack` 与 Profile 导出位于“导入 / 导出”标签中。
+
+导出 Profile 使用管理器安装版随附的 `dspack` CLI：先选择 Profile 目录和输出目录，可预览扫描结果，再导出 manifest v5 / `.dspack` v3。若未安装管理器或 CLI 不在 PATH 中，页面会提示安装。格式规范见 [DSH-PackForge](https://github.com/DSH-PackForge/DSH-PackForge)。
 
 ## 构建和运行
 
@@ -50,8 +62,8 @@ Harness 默认监听 `http://127.0.0.1:3080/`；
 & ".\bin\x64\Debug\net8.0-windows10.0.26100.0\win-x64\AnotherDSHL.exe" --demo --demo-clean --demo-step=7
 ```
 
-点击“启动 Harness”后，资源检查、虚拟下载百分比、Web 服务启动和绿色完成提示会自动播放；
-全程不下载资源或启动真实服务，完成提示几秒后自动消失。运行状态下点击“停止 Harness”会回到未启动状态
+点击“启动 Web 版”后，资源检查、虚拟下载百分比、Web 服务启动和绿色完成提示会自动播放；
+全程不下载资源或启动真实服务，完成提示几秒后自动消失。运行状态下点击“停止 Web 版”会回到未启动状态
 窗口获得焦点时支持通过方向键或 PageUp / PageDown 手动切幕；普通 `--demo` 模式也提供上一步/下一步按钮
 手动切换会取消自动播放。`--demo-clean` 隐藏控制条，适合以正常小窗尺寸采集画面
 
@@ -62,6 +74,8 @@ Harness 默认监听 `http://127.0.0.1:3080/`；
 - `Services/LauncherSettings.cs`：工作目录、端口、版本和背景模式持久化
 - `Services/DshVersionService.cs`：读取 npm 发布版本
 - `Services/PluginCatalogService.cs`：插件目录源获取与解析
+- `Services/PackForgeMarketService.cs`：整合包市场索引与下载完整性校验
+- `Services/DesktopClientService.cs`：官方桌面客户端安装检测、下载与签名校验
 - `Services/ListeningProcessResolver.cs`：定位本地 DSH 监听进程
 - `tools/generate_assets.py`：从 `Assets/AppIcon.svg` 生成配色变体和 Windows 图块；重新生成需先安装 `tools/requirements-assets.txt`
 - `THIRD_PARTY_NOTICES.md`：Lucide 图标和 DSH 官方标志来源

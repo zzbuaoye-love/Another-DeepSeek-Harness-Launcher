@@ -179,6 +179,40 @@ internal static class LauncherSettings
 
     public static void SaveDshVersion(string version) => SaveValue("DshVersion", version);
 
+    public static string LoadDesktopPath()
+    {
+        try
+        {
+            if (File.Exists(SettingsPath))
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(SettingsPath));
+                if (document.RootElement.TryGetProperty("DesktopPath", out var path))
+                    return path.GetString() ?? "";
+            }
+        }
+        catch { }
+        return "";
+    }
+
+    public static void SaveDesktopPath(string path) => SaveValue("DesktopPath", path);
+
+    public static string LoadLaunchMode()
+    {
+        try
+        {
+            if (File.Exists(SettingsPath))
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(SettingsPath));
+                if (document.RootElement.TryGetProperty("LaunchMode", out var mode) && mode.GetString() == "desktop")
+                    return "desktop";
+            }
+        }
+        catch { }
+        return "web";
+    }
+
+    public static void SaveLaunchMode(string mode) => SaveValue("LaunchMode", mode);
+
     private static void SaveValue(string key, string value)
     {
         try
