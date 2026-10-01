@@ -195,6 +195,12 @@ public sealed partial class MainPage : Page
             SetDemoStep(6);
             PluginTab_Click(InstalledPluginsTab, new RoutedEventArgs());
         }
+        else if (demoViewArg == "plugins-search")
+        {
+            SetDemoStep(6);
+            CatalogSearchTextBox.Text = "linxin666";
+            FilterCatalog();
+        }
         else if (demoViewArg is "plugins-sources" or "sources" or "catalog-sources")
         {
             SetDemoStep(6);
@@ -292,7 +298,12 @@ public sealed partial class MainPage : Page
                 try
                 {
                     var rtb = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
-                    await rtb.RenderAsync(this);
+                    var scaleArg = Environment.GetCommandLineArgs().FirstOrDefault(arg =>
+                        arg.StartsWith("--demo-capture-scale=", StringComparison.OrdinalIgnoreCase));
+                    var captureScale = scaleArg is not null && int.TryParse(scaleArg[21..], out var scale)
+                        ? Math.Clamp(scale, 1, 4) : 1;
+                    await rtb.RenderAsync(this, (int)Math.Round(ActualWidth * captureScale),
+                        (int)Math.Round(ActualHeight * captureScale));
                     var pixels = await rtb.GetPixelsAsync();
                     Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
                     if (File.Exists(fullPath)) File.Delete(fullPath);

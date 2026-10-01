@@ -147,7 +147,7 @@ public sealed partial class MainPage
 
     private void UpdatePackFileUi()
     {
-        var path = _selectedPack is { } pack ? PackForgeMarketService.GetLocalPath(pack) : null;
+        var path = !_demoMode && _selectedPack is { } pack ? PackForgeMarketService.GetLocalPath(pack) : null;
         _packFilePath = path is not null && File.Exists(path) ? path : null;
         ShowPackFileButton.Visibility = _packFilePath is null ? Visibility.Collapsed : Visibility.Visible;
         PackDownloadedPathText.Visibility = ShowPackFileButton.Visibility;
