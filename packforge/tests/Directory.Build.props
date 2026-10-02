@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Runtime.Smoke'">
+    <BaseIntermediateOutputPath>obj\Runtime.Smoke\</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin\Runtime.Smoke\</BaseOutputPath>
+  </PropertyGroup>
+</Project>

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
 namespace AnotherDSHL.Services;
@@ -29,12 +30,15 @@ public static class DesktopClientService
                 foreach (var name in uninstall.GetSubKeyNames())
                 {
                     using var entry = uninstall.OpenSubKey(name);
-                    if (entry?.GetValue("DisplayName") is not string title ||
-                        !title.Equals("DeepSeek Harness", StringComparison.OrdinalIgnoreCase) ||
-                        entry.GetValue("InstallLocation") is not string location) continue;
-                    var executable = Path.Combine(location.Trim('"'), ExecutableName);
-                    if (IsClientExecutable(executable) && HasOfficialPublisher(executable))
-                        return FromPath(executable, entry.GetValue("DisplayVersion") as string ?? "", false);
+                    if (!IsClientDisplayName(entry?.GetValue("DisplayName") as string)) continue;
+                    foreach (var executable in GetRegistryExecutableCandidates(
+                        entry!.GetValue("InstallLocation") as string,
+                        entry.GetValue("DisplayIcon") as string,
+                        entry.GetValue("UninstallString") as string))
+                    {
+                        if (IsClientExecutable(executable) && HasOfficialPublisher(executable))
+                            return FromPath(executable, entry.GetValue("DisplayVersion") as string ?? "", false);
+                    }
                 }
             }
             catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException or ArgumentException) { }
@@ -42,6 +46,41 @@ public static class DesktopClientService
         var standard = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Programs", "DeepSeek Harness", ExecutableName);
         return IsClientExecutable(standard) && HasOfficialPublisher(standard) ? FromPath(standard, "", false) : null;
+    }
+
+    // Electron installers may include the version in the uninstall display name.
+    internal static bool IsClientDisplayName(string? title) => title is not null && Regex.IsMatch(title.Trim(),
+        @"^DeepSeek Harness(?:\s+v?\d+(?:\.\d+)+(?:[-+][0-9A-Za-z.-]+)?)?$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    internal static IEnumerable<string> GetRegistryExecutableCandidates(string? location, string? displayIcon,
+        string? uninstallCommand)
+    {
+        var candidates = new List<string>();
+        AddLocation(location);
+        var iconPath = ExtractExecutablePath(displayIcon);
+        if (iconPath is not null) candidates.Add(iconPath);
+        var uninstaller = ExtractExecutablePath(uninstallCommand);
+        if (uninstaller is not null) AddLocation(Path.GetDirectoryName(uninstaller));
+        return candidates.Distinct(StringComparer.OrdinalIgnoreCase);
+
+        void AddLocation(string? directory)
+        {
+            if (string.IsNullOrWhiteSpace(directory)) return;
+            directory = Environment.ExpandEnvironmentVariables(directory.Trim().Trim('"'));
+            if (Path.IsPathFullyQualified(directory)) candidates.Add(Path.Combine(directory, ExecutableName));
+        }
+    }
+
+    private static string? ExtractExecutablePath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        value = Environment.ExpandEnvironmentVariables(value.Trim());
+        // Icons can end with ,0; uninstall commands can have arguments. Neither is part of the path.
+        var match = Regex.Match(value, "^(?:\"(?<path>[^\"]+\\.exe)\"|(?<path>.+?\\.exe)(?=,|\\s+/|\\s+-|$))",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var path = match.Success ? match.Groups["path"].Value : null;
+        return path is not null && Path.IsPathFullyQualified(path) ? path : null;
     }
 
     public static bool IsClientExecutable(string path)

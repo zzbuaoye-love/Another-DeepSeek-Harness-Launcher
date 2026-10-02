@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
 using AnotherDSHL.Services;
@@ -95,6 +95,39 @@ Check(File.ReadAllText(Path.Combine(service.InstancesRoot, id, "home", "profiles
 Check(File.ReadAllText(Path.Combine(service.InstancesRoot, id, "home", "skills", "example.md")) == "skill", "home content stays inside instance");
 Check(new PackForgeEngineService(service.InstancesRoot, engine).LoadInstalled().Single().Id == id, "instance persists across service reload");
 var profileRoot = Path.Combine(service.InstancesRoot, id, "home", "profiles", "fixture");
+var isolationStorage = Path.Combine(root, "environments");
+var projectA = Path.Combine(root, "ProjectA");
+var projectB = Path.Combine(root, "ProjectB");
+Directory.CreateDirectory(projectA);
+Directory.CreateDirectory(projectB);
+var environmentA = new WorkspaceHarnessEnvironment(projectA, isolationStorage);
+var environmentB = new WorkspaceHarnessEnvironment(projectB, isolationStorage);
+var privateEngineA = new PackForgeEngineService(environmentA.InstancesRoot, engine);
+var privateEngineB = new PackForgeEngineService(environmentB.InstancesRoot, engine);
+await File.WriteAllTextAsync(Path.Combine(profileRoot, "shared-account.txt"), "shared credentials fixture");
+var privateA = await environmentA.PreparePackAsync(instance, service, privateEngineA, projectA, fixtureTools, NpmRegistryService.Official);
+var privateB = await environmentB.PreparePackAsync(instance, service, privateEngineB, projectB, fixtureTools, NpmRegistryService.Official);
+var privateProfileA = privateEngineA.GetProfileDirectory(privateA);
+var privateProfileB = privateEngineB.GetProfileDirectory(privateB);
+Check(privateProfileA != privateProfileB && privateProfileA != profileRoot &&
+    !File.Exists(Path.Combine(privateProfileA, "shared-account.txt")), "isolated packs import original archive without shared accounts");
+await File.WriteAllTextAsync(Path.Combine(privateProfileA, "hello.txt"), "A-only modification");
+Check(File.ReadAllText(Path.Combine(privateProfileB, "hello.txt")) == "payload" &&
+    File.ReadAllText(Path.Combine(profileRoot, "hello.txt")) == "payload", "pack configuration changes stay in current workspace");
+Check((await environmentA.PreparePackAsync(instance, service, privateEngineA, projectA, fixtureTools, NpmRegistryService.Official)) == privateA &&
+    File.ReadAllText(Path.Combine(privateProfileA, "hello.txt")) == "A-only modification", "isolated pack restart preserves its own configuration");
+Check(service.VerifyActivation(instance).Summary.Contains("Profile fixture"), "activation verifies exact installed profile and runtime");
+var runtimeManifest = Path.Combine(service.InstancesRoot, id, "runtime", "node_modules", "@deepseek-ai", "dsh", "package.json");
+var originalRuntimeManifest = await File.ReadAllTextAsync(runtimeManifest);
+await File.WriteAllTextAsync(runtimeManifest, "{\"version\":\"9.9.9\"}");
+await Reject(() => { service.VerifyActivation(instance); return Task.CompletedTask; }, "activation rejects runtime version mismatch");
+await File.WriteAllTextAsync(runtimeManifest, originalRuntimeManifest);
+var profileManifest = Path.Combine(profileRoot, "package.json");
+var originalProfileManifest = await File.ReadAllTextAsync(profileManifest);
+await File.WriteAllTextAsync(profileManifest, "{\"dependencies\":{\"missing-plugin\":\"1.0.0\"}}");
+await Reject(() => { service.VerifyActivation(instance); return Task.CompletedTask; }, "activation rejects missing profile dependencies");
+await File.WriteAllTextAsync(profileManifest, originalProfileManifest);
+
 await File.WriteAllTextAsync(Path.Combine(profileRoot, ".env"), "SAMPLE_SECRET=fixture");
 var exportPreview = await service.InspectProfileAsync(profileRoot, node);
 Check(exportPreview.GetProperty("excluded").GetInt32() > 0, "export preview reports excluded files");
@@ -104,6 +137,18 @@ Check((await service.InspectAsync(exportPath, fixtureTools)).DefaultProfile == "
 using (var exportedZip = ZipFile.OpenRead(exportPath))
     Check(!exportedZip.Entries.Any(entry => entry.FullName.Contains(".env")), "export filters credentials before packaging");
 var launch = service.CreateLaunchInfo(instance, node, 39001);
+var alternateWorkspace = Path.Combine(root, "alternate-project");
+Directory.CreateDirectory(alternateWorkspace);
+var alternateLaunch = service.CreateLaunchInfo(instance, node, 39002, alternateWorkspace);
+using (var process = Process.Start(alternateLaunch)!)
+{
+    var output = await process.StandardOutput.ReadToEndAsync();
+    await process.WaitForExitAsync();
+    using var result = JsonDocument.Parse(output);
+    Check(result.RootElement.GetProperty("cwd").GetString() == alternateWorkspace &&
+        result.RootElement.GetProperty("home").GetString() == Path.Combine(service.InstancesRoot, id, "home"),
+        "workspace switching changes project path and preserves isolated pack home");
+}
 using (var process = Process.Start(launch)!)
 {
     var output = await process.StandardOutput.ReadToEndAsync();

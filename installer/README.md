@@ -28,7 +28,7 @@ was actually distributed, not a fresh rebuild of an older source version.
 
 “关于 → 启动器更新” checks this repository's GitHub Releases on demand, downloads
 assets to a unique local cache and verifies their size and SHA-256 against
-`SHA256SUMS.txt`. The prerelease checkbox defaults on for Beta builds. Downloads require the user's
+`SHA256SUMS.txt`. The prerelease checkbox defaults on for Alpha and Beta builds. Downloads require the user's
 confirmation; installation has a separate “退出并更新” confirmation.
 
 Checking, downloading and local-package preparation can be cancelled. Failed

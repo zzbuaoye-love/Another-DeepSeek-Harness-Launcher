@@ -11,6 +11,7 @@ public sealed record PackInstallInfo(string Name, string Title, string Version, 
     string DshVersion, string[] Profiles, string DefaultProfile, int BundleCount,
     int DependencyCount, int FileCount, string Sha256, long Size);
 public sealed record PackEngineTools(string Node, string NpmCli, string? PnpmCli);
+public sealed record PackActivationEvidence(string Home, string ProfileDirectory, string Summary);
 public sealed record InstalledPack(string Id, string Title, string Version, string SourceSha256, string DshVersion,
     string Profile, string HomeRelativePath, string RuntimeEntryRelativePath, string Workspace,
     DateTimeOffset InstalledAt)
@@ -18,7 +19,7 @@ public sealed record InstalledPack(string Id, string Title, string Version, stri
     public string DisplayName => $"{Title} · v{Version} · {Profile}";
 }
 
-/// <summary>Runs the bundled core in a private Node child; the desktop manager is optional.</summary>
+/// <summary>Runs the bundled core in a private Node child without an external desktop manager.</summary>
 public sealed class PackForgeEngineService
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
@@ -66,7 +67,8 @@ public sealed class PackForgeEngineService
 
     public async Task<InstalledPack> InstallAsync(string source, PackInstallInfo info, string id,
         string dshVersion, string profile, string workspace, PackEngineTools tools,
-        IProgress<PackEngineProgress>? progress = null, CancellationToken token = default)
+        IProgress<PackEngineProgress>? progress = null, CancellationToken token = default,
+        string? registryUrl = null, string? npmCache = null)
     {
         if (!SafeId.IsMatch(id) || !DshVersionService.IsSafeVersion(dshVersion) ||
             !info.Profiles.Contains(profile, StringComparer.Ordinal) || profile.Equals("desktop", StringComparison.OrdinalIgnoreCase))
@@ -77,7 +79,7 @@ public sealed class PackForgeEngineService
         var destination = InstanceDirectory(id);
         if (Directory.Exists(destination)) throw new IOException("该实例已存在，请创建新的实例。");
         Directory.CreateDirectory(InstancesRoot);
-        var staging = ResolveChild(InstancesRoot, ".staging-" + Guid.NewGuid().ToString("N"));
+        var staging = ResolveChild(InstancesRoot, ".staging-" + Guid.NewGuid().ToString("N")[..12]);
         Directory.CreateDirectory(staging);
         var published = false;
         try
@@ -100,7 +102,7 @@ public sealed class PackForgeEngineService
             progress?.Report(new("runtime", $"准备 DSH {dshVersion} 运行环境…"));
             await RunNodeCommandAsync(tools.Node, tools.NpmCli,
                 ["install", "--prefix", runtime, "--no-audit", "--no-fund", $"@deepseek-ai/dsh@{dshVersion}"],
-                staging, progress, token);
+                staging, progress, token, registryUrl, npmCache);
             var packageDirectory = Path.Combine(runtime, "node_modules", "@deepseek-ai", "dsh");
             using var package = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(packageDirectory, "package.json"), token));
             var actualVersion = package.RootElement.GetProperty("version").GetString();
@@ -119,18 +121,28 @@ public sealed class PackForgeEngineService
                 await File.WriteAllTextAsync(Path.Combine(toolDirectory, "package.json"), "{\"private\":true}", token);
                 await RunNodeCommandAsync(tools.Node, tools.NpmCli,
                     ["install", "--prefix", toolDirectory, "--no-audit", "--no-fund", "--ignore-scripts", "pnpm@10.17.1"],
-                    staging, progress, token);
+                    staging, progress, token, registryUrl, npmCache);
                 pnpm = Path.Combine(toolDirectory, "node_modules", "pnpm", "bin", "pnpm.cjs");
             }
             if (!File.Exists(pnpm)) throw new FileNotFoundException("依赖安装工具未准备好。");
             var home = Path.Combine(staging, "home");
-            await RunAsync(tools.Node, new { command = "install", source = snapshot, home, pnpmCli = pnpm, dshVersion }, progress, token);
+            try
+            {
+                await RunAsync(tools.Node, new { command = "install", source = snapshot, home, pnpmCli = pnpm, dshVersion }, progress, token, registryUrl, npmCache);
+            }
+            catch (Exception ex) when (registryUrl is not null && registryUrl != NpmRegistryService.Official.Url && ex is not OperationCanceledException)
+            {
+                // This fresh staging home belongs only to the current operation.
+                if (Directory.Exists(home)) Directory.Delete(home, true);
+                progress?.Report(new("log", "镜像依赖安装失败，使用 npm 官方源重试。"));
+                await RunAsync(tools.Node, new { command = "install", source = snapshot, home, pnpmCli = pnpm, dshVersion }, progress, token, NpmRegistryService.Official.Url, npmCache);
+            }
             if (!File.Exists(Path.Combine(home, "profiles", profile, "package.json")))
                 throw new InvalidDataException("安装未产生所选 Profile。");
             var installed = new InstalledPack(id, info.Title, info.Version, info.Sha256, dshVersion, profile,
                 "home", Path.GetRelativePath(staging, runtimeEntry), Path.GetFullPath(workspace), DateTimeOffset.UtcNow);
             await File.WriteAllTextAsync(Path.Combine(staging, "instance.json"), JsonSerializer.Serialize(installed), token);
-            File.Delete(snapshot);
+            // Retain the verified archive so another isolated workspace can import a clean instance.
             token.ThrowIfCancellationRequested();
             Directory.Move(staging, destination);
             published = true;
@@ -166,9 +178,10 @@ public sealed class PackForgeEngineService
         return result.OrderByDescending(pack => pack.InstalledAt).ToArray();
     }
 
-    public ProcessStartInfo CreateLaunchInfo(InstalledPack pack, string node, int port)
+    public ProcessStartInfo CreateLaunchInfo(InstalledPack pack, string node, int port, string? workspace = null)
     {
-        if (port is < 1 or > 65535 || !File.Exists(node) || !Directory.Exists(pack.Workspace))
+        workspace ??= pack.Workspace;
+        if (port is < 1 or > 65535 || !File.Exists(node) || !Directory.Exists(workspace))
             throw new InvalidOperationException("Node.js、工作目录或 Web 端口不可用。");
         var directory = InstanceDirectory(pack.Id);
         var entry = ResolveChild(directory, pack.RuntimeEntryRelativePath);
@@ -177,7 +190,7 @@ public sealed class PackForgeEngineService
             throw new InvalidOperationException("整合包实例不完整，请重新安装。");
         var start = new ProcessStartInfo(node)
         {
-            WorkingDirectory = pack.Workspace, UseShellExecute = false, CreateNoWindow = true,
+            WorkingDirectory = workspace, UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true
         };
         foreach (var argument in new[] { entry, "--profile", pack.Profile, "--no-open", "--port", port.ToString() })
@@ -188,12 +201,109 @@ public sealed class PackForgeEngineService
         return start;
     }
 
+    public PackActivationEvidence VerifyActivation(InstalledPack pack)
+    {
+        var directory = InstanceDirectory(pack.Id);
+        var home = ResolveChild(directory, pack.HomeRelativePath);
+        var profile = ResolveChild(Path.Combine(home, "profiles"), pack.Profile);
+        var entry = ResolveChild(directory, pack.RuntimeEntryRelativePath);
+        if (!File.Exists(entry)) throw new InvalidDataException("DSH 启动入口缺失。");
+        using var runtime = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "runtime", "node_modules", "@deepseek-ai", "dsh", "package.json")));
+        if (runtime.RootElement.GetProperty("version").GetString() != pack.DshVersion)
+            throw new InvalidDataException("实例实际 DSH 版本与锁定版本不一致。");
+        using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(profile, "package.json")));
+        var count = 0;
+        foreach (var section in new[] { "dependencies", "devDependencies" })
+        {
+            if (!manifest.RootElement.TryGetProperty(section, out var dependencies)) continue;
+            foreach (var dependency in dependencies.EnumerateObject())
+            {
+                if (!Regex.IsMatch(dependency.Name, @"^(?:@[a-z0-9._-]+/)?[a-z0-9._-]+$", RegexOptions.IgnoreCase))
+                    throw new InvalidDataException("Profile 依赖包名无效。");
+                if (!File.Exists(Path.Combine(profile, "node_modules", dependency.Name.Replace('/', Path.DirectorySeparatorChar), "package.json")))
+                    throw new InvalidDataException($"Profile 依赖缺失：{dependency.Name}");
+                count++;
+            }
+        }
+        var layers = 0;
+        if (manifest.RootElement.TryGetProperty("dsh", out var dsh) && dsh.TryGetProperty("profile", out var configuration) &&
+            configuration.TryGetProperty("bundles", out var bundles))
+        {
+            foreach (var bundle in bundles.EnumerateArray())
+            {
+                var name = bundle.GetString() ?? "";
+                if (!Regex.IsMatch(name, @"^(?:@[a-z0-9._-]+/)?[a-z0-9._-]+$", RegexOptions.IgnoreCase))
+                    throw new InvalidDataException("Bundle 名称无效。");
+                var relative = name.Replace('/', Path.DirectorySeparatorChar);
+                var bundleDirectory = Path.Combine(profile, "node_modules", relative);
+                if (!File.Exists(Path.Combine(bundleDirectory, "package.json")))
+                    bundleDirectory = Path.Combine(directory, "runtime", "node_modules", relative);
+                using var bundlePackage = JsonDocument.Parse(File.ReadAllText(Path.Combine(bundleDirectory, "package.json")));
+                if (!bundlePackage.RootElement.TryGetProperty("dsh", out var bundleDsh) || !bundleDsh.TryGetProperty("bundle", out var definition) ||
+                    !definition.TryGetProperty("patch", out var patch)) throw new InvalidDataException($"Bundle 缺少配置层：{name}");
+                if (patch.ValueKind == JsonValueKind.String && !File.Exists(ResolveChild(bundleDirectory, patch.GetString()!)))
+                    throw new InvalidDataException($"Bundle 配置文件缺失：{name}");
+                layers++;
+            }
+        }
+        return new(home, profile, $"Profile {pack.Profile} · DSH v{pack.DshVersion} · {count} 个依赖 · {layers} 个配置层");
+    }
+
     public Task<JsonElement> InspectProfileAsync(string source, string node, CancellationToken token = default) =>
         RunAsync(node, new { command = "inspectProfile", source }, null, token);
 
     public Task<JsonElement> ExportAsync(string source, string output, string dshVersion, string node,
         IProgress<PackEngineProgress>? progress, CancellationToken token = default) =>
         RunAsync(node, new { command = "export", source, output, dshVersion }, progress, token);
+
+    public string GetProfileDirectory(InstalledPack pack) =>
+        ResolveChild(Path.Combine(ResolveChild(InstanceDirectory(pack.Id), pack.HomeRelativePath), "profiles"), pack.Profile);
+
+    public string GetSourceArchive(InstalledPack pack)
+    {
+        var snapshot = Path.Combine(InstanceDirectory(pack.Id), "source.dspack");
+        if (File.Exists(snapshot)) return snapshot;
+        // Older instances discarded their snapshot; the download cache may still contain the exact archive.
+        var downloads = Path.Combine(Path.GetDirectoryName(InstancesRoot)!, "Packs");
+        if (Directory.Exists(downloads))
+            foreach (var file in Directory.EnumerateFiles(downloads, "*.dspack").Take(80))
+            {
+                using var stream = File.OpenRead(file);
+                if (Convert.ToHexString(SHA256.HashData(stream)).Equals(pack.SourceSha256, StringComparison.OrdinalIgnoreCase)) return file;
+            }
+        throw new FileNotFoundException("此旧实例的原始 .dspack 不在下载缓存中。请重新导入原始整合包后开启隔离；现有实例与配置已保留。");
+    }
+
+    public void Uninstall(InstalledPack pack)
+    {
+        var directory = InstanceDirectory(pack.Id);
+        // A manifest identifies the managed instance; workspace and downloaded archives are external.
+        var installed = JsonSerializer.Deserialize<InstalledPack>(File.ReadAllText(Path.Combine(directory, "instance.json")), JsonOptions);
+        if (installed != pack) throw new InvalidDataException("整合包安装记录已改变，请刷新后重试。");
+        var workspace = Path.GetFullPath(pack.Workspace).TrimEnd(Path.DirectorySeparatorChar);
+        if (workspace.Equals(directory, StringComparison.OrdinalIgnoreCase) ||
+            workspace.StartsWith(directory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("工作目录位于整合包实例内部，请先移出项目文件再删除。");
+        for (var parent = new DirectoryInfo(directory); parent is not null; parent = parent.Parent)
+            if ((parent.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("整合包实例目录不能通过链接指向其他位置。");
+        DeleteInstanceTree(directory);
+    }
+
+    private static void DeleteInstanceTree(string directory)
+    {
+        foreach (var child in Directory.EnumerateFileSystemEntries(directory))
+        {
+            var attributes = File.GetAttributes(child);
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                if ((attributes & FileAttributes.ReparsePoint) != 0) Directory.Delete(child);
+                else DeleteInstanceTree(child);
+            }
+            else File.Delete(child);
+        }
+        Directory.Delete(directory);
+    }
 
     private string InstanceDirectory(string id)
     {
@@ -233,10 +343,17 @@ public sealed class PackForgeEngineService
         }
     }
 
-    private async Task<JsonElement> RunAsync(string node, object request, IProgress<PackEngineProgress>? progress, CancellationToken token)
+    private async Task<JsonElement> RunAsync(string node, object request, IProgress<PackEngineProgress>? progress, CancellationToken token,
+        string? registryUrl = null, string? npmCache = null)
     {
         if (!File.Exists(_enginePath)) throw new FileNotFoundException("内置整合包引擎缺失，请重新安装启动器。", _enginePath);
         var start = NewNodeStart(node);
+        if (registryUrl is not null) NpmRegistryService.Apply(start, new("Selected", "选定源", registryUrl));
+        if (npmCache is not null)
+        {
+            start.Environment["npm_config_cache"] = npmCache;
+            start.Environment["npm_config_store_dir"] = Path.Combine(npmCache, "pnpm-store");
+        }
         start.ArgumentList.Add(_enginePath);
         start.ArgumentList.Add("--stdio");
         start.RedirectStandardInput = true;
@@ -294,10 +411,27 @@ public sealed class PackForgeEngineService
     }
 
     private static async Task RunNodeCommandAsync(string node, string cli, string[] arguments, string directory,
-        IProgress<PackEngineProgress>? progress, CancellationToken token)
+        IProgress<PackEngineProgress>? progress, CancellationToken token, string? registryUrl = null, string? npmCache = null)
     {
+        if (registryUrl is not null)
+        {
+            var registry = new NpmRegistry("Selected", "选定源", registryUrl);
+            try
+            {
+                await NpmProcessRunner.RunAsync(node, cli, arguments, directory, registry,
+                    line => progress?.Report(new("log", line)), token, npmCache: npmCache);
+            }
+            catch (Exception ex) when (registryUrl != NpmRegistryService.Official.Url && ex is not OperationCanceledException)
+            {
+                progress?.Report(new("log", "镜像下载失败，使用 npm 官方源重试。"));
+                await NpmProcessRunner.RunAsync(node, cli, arguments, directory, NpmRegistryService.Official,
+                    line => progress?.Report(new("log", line)), token, npmCache: npmCache);
+            }
+            return;
+        }
         var start = NewNodeStart(node);
         start.WorkingDirectory = directory;
+        if (npmCache is not null) start.Environment["npm_config_cache"] = npmCache;
         start.ArgumentList.Add(cli);
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = new Process { StartInfo = start };

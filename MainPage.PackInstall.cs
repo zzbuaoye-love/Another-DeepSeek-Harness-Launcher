@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using AnotherDSHL.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -20,7 +20,7 @@ public sealed partial class MainPage
         var id = _activePack?.Id ?? LauncherSettings.LoadActivePackId();
         var packs = _demoMode ? Array.Empty<InstalledPack>() : _packEngine.LoadInstalled();
         HomePackComboBox.Items.Clear();
-        HomePackComboBox.Items.Add(new ComboBoxItem { Content = "默认工作区", Tag = "" });
+        HomePackComboBox.Items.Add(new ComboBoxItem { Content = "标准 DSH（不使用整合包）", Tag = "" });
         InstalledPacksComboBox.Items.Clear();
         foreach (var pack in packs)
         {
@@ -35,12 +35,15 @@ public sealed partial class MainPage
             ? packs.FirstOrDefault(pack => pack.SourceSha256.Equals(selected.Sha256, StringComparison.OrdinalIgnoreCase)) : null;
         LaunchInstalledPackButton.Visibility = _detailInstalledPack is null ? Visibility.Collapsed : Visibility.Visible;
         _packChoicesReady = true;
+        UpdateVersionSelectionUi();
+        UpdateRemovalUi();
+        if (_workspaces is not null && !_workspaceApplying && !WorkspaceChangeBlocked) ApplySelectedWorkspace();
     }
 
     private void HomePackComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_packChoicesReady) return;
-        if (_starting || _serviceReady || _service is { HasExited: false })
+        if (_starting || _serviceReady || _service is { HasExited: false } || _installingPlugin || _packRemoving || _removalConfirming)
         {
             _packChoicesReady = false;
             HomePackComboBox.SelectedItem = HomePackComboBox.Items.OfType<ComboBoxItem>()
@@ -50,19 +53,23 @@ public sealed partial class MainPage
             return;
         }
         _activePack = (HomePackComboBox.SelectedItem as ComboBoxItem)?.Tag as InstalledPack;
-        if (!_demoMode && !LauncherSettings.SaveActivePackId(_activePack?.Id ?? ""))
+        if (!_demoMode && _workspaceCatalogOverride is null && !LauncherSettings.SaveActivePackId(_activePack?.Id ?? ""))
             ServiceStatusText.Text = "已切换实例，但设置保存失败，下次打开可能需要重新选择。";
         else ServiceStatusText.Text = _activePack is { } pack ? $"准备启动 {pack.Title} · {pack.Profile}" : "本地服务未启动";
-        var workspace = _activePack?.Workspace ?? WorkspaceTextBox.Text.Trim();
+        var workspace = WorkspaceTextBox.Text.Trim();
         WorkspaceNameText.Text = Directory.Exists(workspace) ? new DirectoryInfo(workspace).Name : "选择工作区";
-        UpdateBranding();
+        PackActivationText.Text = _activePack is null ? "" : "尚未启动，可先检查实例完整性。";
+        UpdateVersionSelectionUi();
+        if (_initialized) UpdateBranding();
+        SaveWorkspaceConfiguration();
+        RefreshPlugins();
     }
 
     private void SelectInstalledPack(InstalledPack pack)
     {
         if (_starting || _serviceReady || _service is { HasExited: false })
         {
-            InstalledPackStatusText.Text = "已安装，请先停止当前服务，再从首页选择整合包实例。";
+            InstalledPackStatusText.Text = "已安装，请先停止当前服务，再从工作区选择整合包实例。";
             return;
         }
         LaunchModeComboBox.SelectedIndex = 0;
@@ -96,8 +103,9 @@ public sealed partial class MainPage
 
     private async Task InstallPackInLauncherAsync(Func<CancellationToken, Task<string>> getSource, TextBlock status)
     {
-        if (_demoMode || _packInstalling || _packExporting || _packOpening) return;
+        if (_demoMode || _packInstalling || _packExporting || _packRemoving || _installingPlugin || _removalConfirming) return;
         _packInstalling = true;
+        UpdateRemovalUi();
         using var cancellation = new CancellationTokenSource();
         _packInstallCancellation = cancellation;
         PackInstallProgressPanel.Visibility = Visibility.Visible;
@@ -110,8 +118,8 @@ public sealed partial class MainPage
         var installedSuccessfully = false;
         var progress = new Progress<PackEngineProgress>(message =>
         {
-            if (message.Stage == "log") AppendLog($"[PackForge] {message.Detail}");
-            else
+            AppendLog($"[整合包/{message.Stage}] {message.Detail}");
+            if (message.Stage != "log")
             {
                 PackInstallProgressText.Text = message.Detail;
                 status.Text = message.Detail;
@@ -146,7 +154,7 @@ public sealed partial class MainPage
             var selectedProfile = PackInstallProfileComboBox.SelectedItem as string
                 ?? throw new InvalidOperationException("请选择启动 Profile。");
             var installedPack = await _packEngine.InstallAsync(path, info, id, dshVersion, selectedProfile,
-                WorkspaceTextBox.Text.Trim(), tools, progress, cancellation.Token);
+                WorkspaceTextBox.Text.Trim(), tools, progress, cancellation.Token, (await SelectNpmRegistryAsync(cancellation.Token)).Url);
             installedSuccessfully = true;
             RefreshInstalledPacks();
             InstalledPackStatusText.Text = $"已安装 {installedPack.DisplayName}，可在首页选择并启动。";
@@ -173,6 +181,7 @@ public sealed partial class MainPage
             DismissPackInstallButton.Visibility = Visibility.Visible;
             DownloadPackButton.IsEnabled = _selectedPack?.CanDownload == true && !_demoMode;
             UpdatePackFileUi();
+            UpdateRemovalUi();
         }
     }
 
@@ -185,9 +194,4 @@ public sealed partial class MainPage
 
     private void DismissPackInstall_Click(object sender, RoutedEventArgs e) => PackInstallProgressPanel.Visibility = Visibility.Collapsed;
 
-    private async void ExternalOpenPack_Click(object sender, RoutedEventArgs e)
-    {
-        if (_packInstalling || _packFilePath is null) return;
-        await OpenPackWithRecoveryAsync(_packFilePath, PackActionStatusText);
-    }
 }

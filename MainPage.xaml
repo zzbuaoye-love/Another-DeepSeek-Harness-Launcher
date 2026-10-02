@@ -1,4 +1,4 @@
-<Page x:Class="AnotherDSHL.MainPage"
+﻿<Page x:Class="AnotherDSHL.MainPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       RequestedTheme="Dark">
@@ -28,14 +28,17 @@
             <NavigationViewItem x:Name="HomeItem" Content="启动" Tag="home">
                 <NavigationViewItem.Icon><ImageIcon Source="ms-appx:///Assets/Icons/house.svg" /></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Content="工作区" Tag="environment">
+            <NavigationViewItem x:Name="WorkspaceItem" Content="工作区" Tag="workspaces">
                 <NavigationViewItem.Icon><ImageIcon Source="ms-appx:///Assets/Icons/folder-open.svg" /></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Content="插件" Tag="plugins">
+            <NavigationViewItem x:Name="PluginsItem" Content="插件" Tag="plugins">
                 <NavigationViewItem.Icon><ImageIcon Source="ms-appx:///Assets/Icons/puzzle.svg" /></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Content="整合包" Tag="packs">
+            <NavigationViewItem x:Name="PacksItem" Content="整合包" Tag="packs">
                 <NavigationViewItem.Icon><ImageIcon Source="ms-appx:///Assets/Icons/package.svg" /></NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem x:Name="EnvironmentItem" Content="运行环境" Tag="environment">
+                <NavigationViewItem.Icon><ImageIcon Source="ms-appx:///Assets/Icons/monitor.svg" /></NavigationViewItem.Icon>
             </NavigationViewItem>
         </NavigationView.MenuItems>
         <NavigationView.FooterMenuItems>
@@ -59,9 +62,6 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid x:Name="HomeView" Margin="30,0,30,24">
-                <ComboBox x:Name="HomePackComboBox" HorizontalAlignment="Left" VerticalAlignment="Top"
-                          Margin="0,14,125,0" MinWidth="200" MaxWidth="330" Height="32" FontSize="12"
-                          AutomationProperties.Name="启动实例" SelectionChanged="HomePackComboBox_SelectionChanged" />
                 <ComboBox x:Name="LaunchModeComboBox" HorizontalAlignment="Right" VerticalAlignment="Top"
                           Margin="0,14,0,0" MinWidth="112" Height="32" FontSize="12"
                           AutomationProperties.Name="启动方式" SelectionChanged="LaunchModeComboBox_SelectionChanged">
@@ -93,13 +93,21 @@
                         <TextBlock x:Name="ServiceStatusText" Text="本地服务未启动" FontSize="12"
                                    Foreground="#B6FFFFFF" VerticalAlignment="Center" />
                     </StackPanel>
+                    <StackPanel x:Name="PackActivationPanel" Visibility="Collapsed" Spacing="4" Margin="0,8,0,0">
+                        <TextBlock x:Name="PackActivationText" Text="尚未验证整合包" FontSize="10" TextWrapping="Wrap"
+                                   Foreground="#B6FFFFFF" MaxWidth="380" HorizontalAlignment="Center" />
+                        <Button Content="检查整合包" Click="VerifyActivePack_Click" HorizontalAlignment="Center"
+                                FontSize="11" Padding="8,3" />
+                    </StackPanel>
                     <TextBlock x:Name="DesktopHomeStatusText" Text="正在检测官方桌面客户端…" FontSize="11"
                                Foreground="#B6FFFFFF" HorizontalAlignment="Center" Margin="0,18,0,0"
                                TextWrapping="Wrap" MaxWidth="400" Visibility="Collapsed" />
                 </StackPanel>
 
-                <Grid x:Name="WebHomeFooter" VerticalAlignment="Bottom" ColumnSpacing="14">
+                <Grid x:Name="WebHomeFooter" VerticalAlignment="Bottom" ColumnSpacing="10" RowSpacing="8">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
@@ -107,7 +115,7 @@
                             HorizontalAlignment="Left" Padding="12,9"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            AutomationProperties.Name="打开工作区设置">
+                            AutomationProperties.Name="管理工作区">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <Image Source="ms-appx:///Assets/Icons/folder-open.svg" Width="19" Height="19" />
                             <StackPanel Spacing="1">
@@ -118,7 +126,34 @@
                             </StackPanel>
                         </StackPanel>
                     </Button>
-                    <Border x:Name="EnvironmentWarning" Grid.Column="1" VerticalAlignment="Center"
+                    <Button x:Name="VersionTile" Grid.Column="1" Padding="12,9"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" AutomationProperties.Name="选择启动版本">
+                        <Button.Flyout>
+                            <Flyout Placement="Top">
+                                <StackPanel x:Name="HomeVersionPanel" Width="290" Spacing="8">
+                                    <TextBlock Text="启动版本" FontWeight="SemiBold" />
+                                    <Grid ColumnSpacing="6">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <ComboBox x:Name="DshVersionComboBox" HorizontalAlignment="Stretch" Height="32" FontSize="12"
+                                                  AutomationProperties.Name="DSH 启动版本" SelectionChanged="DshVersionComboBox_SelectionChanged" />
+                                        <Button Grid.Column="1" Content="刷新" Height="32" FontSize="11" Click="RefreshDshVersionsButton_Click" />
+                                    </Grid>
+                                    <TextBlock x:Name="DshVersionStatusText" Text="默认模式：启动前更新到最新版" FontSize="11"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon Glyph="&#xE8A5;" FontSize="18" />
+                            <StackPanel Spacing="1">
+                                <TextBlock x:Name="HomeVersionText" Text="默认 · 最新版" FontSize="12" FontWeight="SemiBold"
+                                           MaxWidth="150" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="启动版本" FontSize="10" Foreground="#8FFFFFFF" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Button>
+                    <Border x:Name="EnvironmentWarning" Grid.Row="1" Grid.ColumnSpan="3" VerticalAlignment="Center"
                             Background="#1DFFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1"
                             CornerRadius="6" Padding="11,8" Visibility="Collapsed">
                         <Grid ColumnSpacing="9">
@@ -151,35 +186,105 @@
                 </Grid>
             </Grid>
 
+            <ScrollViewer x:Name="WorkspacesView" Visibility="Collapsed" HorizontalScrollBarVisibility="Disabled"
+                          HorizontalContentAlignment="Stretch">
+                <StackPanel Margin="24,20,24,32" Spacing="18">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="工作区" Style="{StaticResource TitleTextBlockStyle}" />
+                        <TextBlock Text="管理项目目录。切换工作区时自动恢复它的版本和整合包。" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBox x:Name="WorkspacePathInput" PlaceholderText="输入项目目录的完整路径" AutomationProperties.Name="添加工作区路径" />
+                        <Button Grid.Column="1" Content="添加" Click="AddWorkspace_Click" />
+                        <Button Grid.Column="2" Content="浏览…" Click="BrowseButton_Click" />
+                    </Grid>
+                    <TextBlock x:Name="WorkspaceManagerStatusText" Text="上次选择会自动记住，移除记录不会删除项目文件。"
+                               FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <ListView x:Name="WorkspacesList" SelectionMode="Single" SelectionChanged="WorkspacesList_SelectionChanged"
+                              MaxHeight="230" AutomationProperties.Name="已保存的工作区">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Spacing="3" Margin="4,8" HorizontalAlignment="Stretch">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Path}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                    <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <TextBlock Text="{Binding Availability}" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock Text="{Binding Configuration}" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <Button x:Name="RemoveWorkspaceButton" Content="从列表移除当前工作区" Click="RemoveWorkspace_Click" HorizontalAlignment="Left" />
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1" CornerRadius="12" Padding="16">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="当前工作区的启动配置" FontWeight="SemiBold" />
+                            <TextBlock x:Name="WorkspaceConfigurationText" FontSize="12" TextWrapping="Wrap" />
+                            <ToggleSwitch x:Name="WorkspaceIsolationToggle" Header="版本隔离 · 独立 Harness"
+                                          OnContent="独立" OffContent="共享" Toggled="WorkspaceIsolation_Toggled" />
+                            <TextBlock x:Name="WorkspaceIsolationDescription" FontSize="11" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <ComboBox x:Name="HomePackComboBox" Header="整合包" HorizontalAlignment="Stretch"
+                                      AutomationProperties.Name="启动实例" SelectionChanged="HomePackComboBox_SelectionChanged" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="选择启动版本" Click="WorkspaceVersion_Click" />
+                                <Button Content="运行环境" Click="OpenEnvironment_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="自动化" FontWeight="SemiBold" />
+                        <ToggleSwitch x:Name="WorkspaceRestoreToggle" Header="切换时恢复版本和整合包" Toggled="WorkspaceAutomation_Toggled" />
+                        <ToggleSwitch x:Name="WorkspaceDiscoverToggle" Header="打开工作区页面时发现常用项目" Toggled="WorkspaceAutomation_Toggled" />
+                        <TextBlock Text="自动记住上次选择，打开页面时检查所有路径。仅扫描常见位置的一层目录。" FontSize="11"
+                                   TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Button x:Name="DiscoverWorkspacesButton" Content="查找项目" Click="DiscoverWorkspaces_Click" HorizontalAlignment="Left" />
+                        <TextBlock x:Name="DiscoveredWorkspacesStatusText" Text="候选项目会显示在这里，点击后添加并切换。" FontSize="12" TextWrapping="Wrap" />
+                        <ListView x:Name="DiscoveredWorkspacesList" IsItemClickEnabled="True" SelectionMode="None" ItemClick="DiscoveredWorkspacesList_ItemClick"
+                                  MaxHeight="210" AutomationProperties.Name="发现的项目">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="4,8" Spacing="3">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Path}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+
             <ScrollViewer x:Name="EnvironmentView" Visibility="Collapsed"
                           HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
                           HorizontalContentAlignment="Stretch">
                 <StackPanel Margin="24,20,24,32"
                             HorizontalAlignment="Stretch" Spacing="24">
                     <StackPanel Spacing="4">
-                        <TextBlock Text="工作区" Style="{StaticResource TitleTextBlockStyle}" />
-                        <TextBlock Text="配置 DeepSeek Harness 的工作目录和运行环境。"
+                        <TextBlock Text="运行环境" Style="{StaticResource TitleTextBlockStyle}" />
+                        <TextBlock Text="配置 Node.js、下载源及本地服务。项目目录在工作区页面管理。"
                                    Style="{StaticResource BodyTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                     </StackPanel>
 
                     <StackPanel Spacing="8">
-                        <TextBlock Text="工作目录" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock Text="Node.js" Style="{StaticResource BodyStrongTextBlockStyle}" />
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1" CornerRadius="12" Padding="16">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="Harness 将以此目录作为工作区运行。"
-                                           Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" />
                                 <Grid ColumnSpacing="8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBox x:Name="WorkspaceTextBox" Header="目录路径"
-                                             PlaceholderText="选择项目文件夹"
+                                             PlaceholderText="选择项目文件夹" IsReadOnly="True"
                                              TextChanged="WorkspaceTextBox_TextChanged" />
-                                    <Button Grid.Column="1" Content="浏览…" Click="BrowseButton_Click"
+                                    <Button Grid.Column="1" Content="管理工作区" Click="EnvironmentButton_Click"
                                             VerticalAlignment="Bottom" />
                                 </Grid>
                                 <TextBlock x:Name="WorkspaceHint" Style="{StaticResource CaptionTextBlockStyle}"
@@ -227,7 +332,7 @@
                                     <Button x:Name="NodeRepairButton" Content="解决 Node.js 问题"
                                             Click="RepairNodeButton_Click" Visibility="Collapsed"
                                             HorizontalAlignment="Left" />
-                                    <TextBlock x:Name="NodeRepairStatusText" Style="{StaticResource CaptionTextBlockStyle}"
+                                    <TextBlock x:Name="NodeRepairStatusText" Visibility="Collapsed" Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
                                 <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
@@ -241,44 +346,26 @@
                                     <TextBlock Text="DeepSeek Harness" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                     <TextBlock x:Name="WorkspaceDshText" Text="检测中…"
                                                Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" />
-                                    <TextBlock Text="启动版本" Style="{StaticResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                    <Grid ColumnSpacing="8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <ComboBox x:Name="DshVersionComboBox" HorizontalAlignment="Stretch"
-                                                  SelectionChanged="DshVersionComboBox_SelectionChanged" />
-                                        <Button Grid.Column="1" Content="检查版本" Click="RefreshDshVersionsButton_Click" />
-                                    </Grid>
-                                    <TextBlock x:Name="DshVersionStatusText" Text="正在查询 npm 版本…"
-                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
                     </StackPanel>
                     <StackPanel Spacing="8">
-                        <TextBlock Text="PackForge 管理器" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                        <Border x:Name="PackForgeWorkspaceCard"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1" CornerRadius="12" Padding="16">
+                        <TextBlock Text="npm 下载源" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="12" Padding="16">
                             <StackPanel Spacing="10">
-                                <TextBlock Text="可选的外部管理器。整合包可直接在启动器内安装；选择程序后立即固定路径。"
-                                           Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" />
-                                <TextBox x:Name="PackForgePathTextBox" Header="程序路径" IsReadOnly="True"
-                                         PlaceholderText="尚未固定，自动检测安装版" />
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="选择并固定…" Click="SelectWorkspacePackManager_Click" />
-                                    <Button x:Name="ResetPackForgePathButton" Content="恢复自动检测" Click="ResetPackForgePath_Click" />
-                                    <Button Content="刷新检测" Click="RefreshPackForgePath_Click" />
-                                </StackPanel>
-                                <TextBlock x:Name="PackForgeWorkspaceStatusText" Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                <Button x:Name="WorkspaceGetPackForgeButton" Content="获取外部管理器（可选）"
-                                        Click="OpenPackForgeButton_Click" HorizontalAlignment="Left" />
+                                <ComboBox x:Name="NpmRegistryComboBox" HorizontalAlignment="Stretch"
+                                          SelectionChanged="NpmRegistryComboBox_SelectionChanged">
+                                    <ComboBoxItem Content="自动 · 选择延迟最低的可用源" Tag="Auto" />
+                                    <ComboBoxItem Content="阿里 · npmmirror" Tag="Aliyun" />
+                                    <ComboBoxItem Content="npm 官方" Tag="Official" />
+                                    <ComboBoxItem Content="自定义 HTTPS 源" Tag="Custom" />
+                                </ComboBox>
+                                <TextBox x:Name="NpmRegistryUrlTextBox" Header="自定义 registry 地址" Visibility="Collapsed"
+                                         PlaceholderText="https://registry.example.com/" />
+                                <Button Content="检测并保存" Click="CheckNpmRegistry_Click" HorizontalAlignment="Left" />
+                                <TextBlock x:Name="NpmRegistryStatusText" Text="应用于 DSH、插件和整合包依赖；下载失败回退 npm 官方源。"
+                                           TextWrapping="Wrap" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -416,12 +503,23 @@
                             </StackPanel>
                             <StackPanel x:Name="InstalledPluginsPanel" Visibility="Collapsed" Spacing="12">
                                     <Grid>
-                                        <TextBlock Text="Web profile 插件" FontSize="16" FontWeight="SemiBold" />
+                                        <TextBlock x:Name="InstalledPluginsTitle" Text="Web profile 插件" FontSize="16" FontWeight="SemiBold" Margin="0,0,65,0" TextWrapping="Wrap" />
                                         <Button Content="刷新" Click="RefreshPluginsButton_Click" HorizontalAlignment="Right" />
                                     </Grid>
                                     <TextBlock x:Name="PluginsEmptyText" Text="尚未找到 DSH Web 配置。启动 Web 版后再刷新。"
                                                TextWrapping="Wrap" Foreground="#AFFFFFFF" />
-                                    <ListView x:Name="PluginsList" Visibility="Collapsed" SelectionMode="None" MaxHeight="310" />
+                                    <ListView x:Name="PluginsList" Visibility="Collapsed" SelectionMode="Single" MaxHeight="310" SelectionChanged="PluginsList_SelectionChanged">
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Spacing="4" Margin="0,5">
+                                                    <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#AFFFFFFF" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                    <Button x:Name="RemovePluginButton" Content="删除所选插件" Click="RemovePlugin_Click" HorizontalAlignment="Left" IsEnabled="False" />
+                                    <TextBlock x:Name="PluginRemovalStatusText" FontSize="12" TextWrapping="Wrap" Foreground="#AFFFFFFF" />
                                     <Button x:Name="OpenPluginManagerButton" Content="打开 DSH Web 插件管理" Click="OpenPluginManager_Click"
                                             HorizontalAlignment="Left" IsEnabled="False" />
                             </StackPanel>
@@ -467,6 +565,7 @@
                                 <TextBlock x:Name="DetailStatusText" FontSize="12" Foreground="#AFFFFFFF" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Button x:Name="InstallPluginButton" Content="安装到 Web profile" Click="InstallPluginButton_Click" />
+                                    <Button x:Name="RemoveDetailPluginButton" Content="删除插件" Click="RemoveDetailPlugin_Click" Visibility="Collapsed" />
                                     <Button x:Name="OpenRepositoryButton" Content="打开 GitHub 仓库" Click="OpenRepositoryButton_Click" />
                                     <Button x:Name="OpenPluginSourceButton" Content="查看来源页面" Click="OpenPluginSourceButton_Click" />
                                 </StackPanel>
@@ -539,16 +638,17 @@
                                            FontSize="12" TextWrapping="Wrap" Foreground="#AFFFFFFF" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Button Content="安装本地包" Click="OpenLocalPackButton_Click" />
-                                    <Button Content="用外部管理器打开…" Click="ExternalOpenLocalPack_Click" />
                                 </StackPanel>
-                                <Button Content="外部管理器设置（可选）" Click="OpenPackManagerSettings_Click" HorizontalAlignment="Left" />
-                                <TextBlock x:Name="PackManagerStatusText" Text="自动检测安装版；便携版可手动选择，无需设置文件关联。"
+                                <TextBlock x:Name="PackManagerStatusText" Text="使用内置引擎安装与导出，不需要外部管理器。"
                                            FontSize="11" TextWrapping="Wrap" Foreground="#AFFFFFFF" />
                                 <Border Height="1" Background="#1BFFFFFF" />
                                 <TextBlock Text="已安装的整合包" FontSize="16" FontWeight="SemiBold" />
                                 <ComboBox x:Name="InstalledPacksComboBox" HorizontalAlignment="Stretch"
-                                          PlaceholderText="尚未安装整合包" />
-                                <Button Content="在首页使用所选整合包" Click="UseInstalledPack_Click" HorizontalAlignment="Left" />
+                                          PlaceholderText="尚未安装整合包" SelectionChanged="InstalledPacksComboBox_SelectionChanged" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="在首页使用所选整合包" Click="UseInstalledPack_Click" />
+                                    <Button x:Name="RemoveInstalledPackButton" Content="删除所选整合包" Click="RemoveInstalledPack_Click" IsEnabled="False" />
+                                </StackPanel>
                                 <TextBlock x:Name="InstalledPackStatusText" FontSize="11" TextWrapping="Wrap" Foreground="#AFFFFFFF" />
                                 <Border Height="1" Background="#1BFFFFFF" Margin="0,4,0,4" />
                                 <TextBlock Text="导出 Profile" FontSize="16" FontWeight="SemiBold" />
@@ -594,12 +694,11 @@
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Button x:Name="DownloadPackButton" Content="下载并安装" Click="DownloadPackButton_Click" />
                                     <Button x:Name="LaunchInstalledPackButton" Content="在首页使用" Click="LaunchInstalledPackButton_Click" Visibility="Collapsed" />
+                                    <Button x:Name="RemoveDetailPackButton" Content="删除整合包" Click="RemoveDetailPack_Click" Visibility="Collapsed" />
                                     <Button Content="打开 GitHub 仓库" Click="OpenPackRepositoryButton_Click" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Button x:Name="ShowPackFileButton" Content="显示文件" Visibility="Collapsed" Click="ShowPackFileButton_Click" />
-                                    <Button x:Name="ExternalOpenPackButton" Content="用外部管理器打开" Click="ExternalOpenPack_Click" Visibility="Collapsed" />
-                                    <Button Content="管理器设置" Click="OpenPackManagerSettings_Click" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>

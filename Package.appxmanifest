@@ -11,7 +11,7 @@
   <Identity
     Name="5D917132-1800-4237-9154-9C430B6929CA"
     Publisher="CN=AppPublisher"
-    Version="1.0.0.0" />
+    Version="0.0.3.0" />
 
   <mp:PhoneIdentity PhoneProductId="5D917132-1800-4237-9154-9C430B6929CA" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 

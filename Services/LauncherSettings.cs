@@ -213,22 +213,25 @@ internal static class LauncherSettings
 
     public static void SaveLaunchMode(string mode) => SaveValue("LaunchMode", mode);
 
-    public static string LoadPackForgePath()
+    public static string LoadNpmRegistryMode() => NpmRegistryService.NormalizeMode(LoadString("NpmRegistryMode", "Auto"));
+    public static string LoadNpmRegistryUrl() => LoadString("NpmRegistryUrl", "");
+    public static void SaveNpmRegistryMode(string mode) => SaveValue("NpmRegistryMode", NpmRegistryService.NormalizeMode(mode));
+    public static void SaveNpmRegistryUrl(string url) => SaveValue("NpmRegistryUrl", url);
+
+    private static string LoadString(string key, string fallback)
     {
         try
         {
             if (File.Exists(SettingsPath))
             {
                 using var document = JsonDocument.Parse(File.ReadAllText(SettingsPath));
-                if (document.RootElement.TryGetProperty("PackForgePath", out var path))
-                    return path.GetString() ?? "";
+                if (document.RootElement.TryGetProperty(key, out var value))
+                    return value.GetString() ?? fallback;
             }
         }
         catch { }
-        return "";
+        return fallback;
     }
-
-    public static bool SavePackForgePath(string path) => SaveValue("PackForgePath", path);
 
     public static string LoadActivePackId()
     {

@@ -21,11 +21,34 @@ void Manifest(string version)
 }
 try
 {
+    if (args is ["--verify-delta", var baseline, var delta])
+    {
+        string realTarget = Path.Combine(root, "real-upgraded");
+        service.Install(baseline, realTarget, false, false);
+        string preserved = Path.Combine(realTarget, "user-workspace.txt");
+        File.WriteAllText(preserved, "preserve user data");
+        var update = UpdatePackageService.ReadManifest(delta);
+        Check(PayloadManifest.Read(realTarget).Version == update.From, "actual release delta matches published baseline");
+        new UpdatePackageService(service).Apply(delta, realTarget);
+        var upgraded = PayloadManifest.Read(realTarget);
+        Check(upgraded.Version == "0.0.3-alpha", "actual release delta upgrades to Alpha");
+        Check(upgraded.Files.All(file =>
+        {
+            string path = Installation.SafePath(realTarget, file.Path);
+            return new FileInfo(path).Length == file.Size &&
+                Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).Equals(file.Sha256, StringComparison.OrdinalIgnoreCase);
+        }), "all upgraded release files match target checksums");
+        Check(File.ReadAllText(preserved) == "preserve user data", "actual release delta preserves user data");
+        service.Uninstall(realTarget);
+        Check(service.InstalledDirectory == null && File.ReadAllText(preserved) == "preserve user data", "actual updated release uninstalls without removing user data");
+        Console.WriteLine($"{checks} release delta checks passed.");
+        return;
+    }
     if (args is ["--verify-release"])
     {
-        var updates = new AppUpdateService(version: "0.0.1-beta", installed: false, cacheRoot: Path.Combine(root, "release-cache"));
-        var release = await updates.CheckAsync() ?? throw new Exception("Expected second release update");
-        Check(release.Tag == "v0.0.2-beta", "public GitHub API discovers second release");
+        var updates = new AppUpdateService(version: "0.0.2-beta", installed: false, cacheRoot: Path.Combine(root, "release-cache"));
+        var release = await updates.CheckAsync() ?? throw new Exception("Expected Alpha release update");
+        Check(release.Tag == "v0.0.3-alpha", "public GitHub API discovers Alpha release");
         var prepared = await updates.PrepareAsync(release);
         await AppUpdateService.VerifyPreparedAsync(prepared);
         Check(!prepared.Differential && new FileInfo(prepared.Path).Length > 1_000_000, "public release setup downloads and passes update verification");

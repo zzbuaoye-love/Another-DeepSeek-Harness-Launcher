@@ -37,14 +37,14 @@ public sealed class AppUpdateService
         {
             try { return PayloadManifest.Read(AppContext.BaseDirectory).Version; }
             catch { return Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-                ?? Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.2-beta"; }
+                ?? Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.3-alpha"; }
         }
     }
     public static bool IsInstalled => string.Equals(new Installation().InstalledDirectory?.TrimEnd('\\'), AppContext.BaseDirectory.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
     private static HttpClient CreateClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("AnotherDSHL-Updater/0.0.2");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("AnotherDSHL-Updater/0.0.3");
         client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         return client;
     }

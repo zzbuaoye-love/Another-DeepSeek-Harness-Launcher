@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Reflection;
 using System.Net;
 using System.Net.Http;
@@ -68,10 +68,7 @@ public sealed partial class MainPage : Page
     public MainPage()
     {
         InitializeComponent();
-        if (_demoMode)
-            _packManagerPath = Environment.GetCommandLineArgs().FirstOrDefault(arg =>
-                arg.StartsWith("--demo-packforge=", StringComparison.OrdinalIgnoreCase))?[17..] ?? "";
-        RefreshPackManagerUi();
+        InitializeRegistryChoices();
         RefreshInstalledPacks();
         AppUpdatePrereleaseCheckBox.IsChecked = AppUpdateService.CurrentVersion.Contains('-');
         if (!_demoMode)
@@ -89,15 +86,19 @@ public sealed partial class MainPage : Page
         PointerPressed += (s, e) => Focus(FocusState.Programmatic);
         AddHandler(KeyDownEvent, new KeyEventHandler(DemoNavigation_KeyDown), true);
         if (_demoMode) _selectedDshVersion = "0.1.5-rc.3";
+        var portArgument = Environment.GetCommandLineArgs().FirstOrDefault(arg => arg.StartsWith("--web-port=", StringComparison.OrdinalIgnoreCase));
+        if (portArgument is not null && int.TryParse(portArgument[11..], out var overriddenPort) && overriddenPort is >= 1 and <= 65535)
+            _configuredWebPort = overriddenPort;
         _activeWebPort = _configuredWebPort;
         WebPortTextBox.Text = _configuredWebPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
         WebPortStatusText.Text = $"当前设置：{_configuredWebPort}";
-        DshVersionComboBox.Items.Add(new ComboBoxItem { Content = "npm 默认发布版", Tag = "" });
+        DshVersionComboBox.Items.Add(new ComboBoxItem { Content = "默认 · 自动更新到最新版", Tag = "" });
         if (DshVersionService.IsSafeVersion(_selectedDshVersion))
             DshVersionComboBox.Items.Add(new ComboBoxItem { Content = $"v{_selectedDshVersion} · 已锁定", Tag = _selectedDshVersion });
         DshVersionComboBox.SelectedIndex = _selectedDshVersion.Length == 0 ? 0 : 1;
         _versionChoicesReady = true;
         WorkspaceTextBox.Text = _demoMode ? @"C:\Demo\SampleProject" : LauncherSettings.LoadWorkspace();
+        InitializeWorkspaces();
         CatalogUrlTextBox.Text = _demoMode ? "" : LauncherSettings.LoadCatalogUrl();
         UpdateWorkspaceHint();
         Loaded += async (_, _) =>
@@ -118,14 +119,16 @@ public sealed partial class MainPage : Page
             UpdateNodeModeUi();
             _nodeModeReady = true;
             var infoVer = typeof(MainPage).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-            AboutVersionText.Text = $"版本 {(!string.IsNullOrWhiteSpace(infoVer) ? infoVer : typeof(MainPage).Assembly.GetName().Version?.ToString(3) ?? "0.0.1 Beta")}";
+            AboutVersionText.Text = $"版本 {(!string.IsNullOrWhiteSpace(infoVer) ? infoVer : typeof(MainPage).Assembly.GetName().Version?.ToString(3) ?? "0.0.3 Alpha")}";
             ShellNavigation.SelectedItem = HomeItem;
             if (_demoMode)
             {
                 InitializeDemoMode();
                 return;
             }
+            AppendLog($"[ADL] 本次日志文件：{_sessionLogPath}");
             await CheckEnvironmentAsync();
+            UpdateVersionSelectionUi();
             _ = RefreshDshVersionsAsync();
         };
     }
@@ -160,7 +163,7 @@ public sealed partial class MainPage : Page
         CatalogStatusText.Text = "演示目录 · 不联网、不安装插件";
         _catalogLoaded = true;
         FilterCatalog();
-        PluginsList.Items.Add("@deepseek-ai/dsh-web-app   ·   已启用（演示）");
+        PluginsList.Items.Add(new InstalledPlugin("@deepseek-ai/dsh-web-app", "@deepseek-ai/dsh-web-app", true, false, ""));
         PluginsList.Visibility = Visibility.Visible;
         PluginsEmptyText.Visibility = Visibility.Collapsed;
         DemoControls.Visibility = _demoClean ? Visibility.Collapsed : Visibility.Visible;
@@ -171,16 +174,7 @@ public sealed partial class MainPage : Page
 
         var demoViewArg = Environment.GetCommandLineArgs().FirstOrDefault(arg =>
             arg.StartsWith("--demo-view=", StringComparison.OrdinalIgnoreCase))?[12..].ToLowerInvariant();
-        if (demoViewArg == "workspace-packforge")
-        {
-            SetDemoStep(5);
-            DispatcherQueue.TryEnqueue(async () =>
-            {
-                await Task.Delay(250);
-                PackForgeWorkspaceCard.StartBringIntoView();
-            });
-        }
-        else if (demoViewArg is "workspace-dsh" or "version")
+        if (demoViewArg is "workspace-dsh" or "version")
         {
             SetDemoStep(5);
             EnvironmentView.Loaded += (_, _) => EnvironmentView.ChangeView(null, 280, null, true);
@@ -244,9 +238,9 @@ public sealed partial class MainPage : Page
             ShellNavigation.SelectedItem = AboutItem;
             if (demoViewArg == "updates-ready")
             {
-                _preparedAppUpdate = new PreparedUpdate("demo.exe", false, "0.0.3-beta", new string('0', 64));
+                _preparedAppUpdate = new PreparedUpdate("demo.exe", false, "0.0.4-alpha", new string('0', 64));
                 SetAppUpdateBusy(false);
-                AppUpdateStatus.Text = "0.0.3-beta 已下载并校验，可继续安装。";
+                AppUpdateStatus.Text = "0.0.4-alpha 已下载并校验，可继续安装。";
             }
         }
         else if (demoViewArg is "packs" or "packforge" or "packs-export" or "packs-detail" or "packs-unverified" or "packs-installing" or "packs-installed")
@@ -265,7 +259,7 @@ public sealed partial class MainPage : Page
             _packsLoaded = true;
             PacksStatusText.Text = "演示目录 · 不联网、不下载整合包";
             FilterPacks();
-            ShellNavigation.SelectedItem = ShellNavigation.MenuItems[3];
+            ShellNavigation.SelectedItem = PacksItem;
             if (demoViewArg == "packs-detail") PacksList.SelectedIndex = 0;
             if (demoViewArg is "packs-installing" or "packs-installed")
             {
@@ -384,8 +378,8 @@ public sealed partial class MainPage : Page
         UpdateBranding();
         ShellNavigation.SelectedItem = _demoStep switch
         {
-            5 => ShellNavigation.MenuItems[1],
-            6 or 7 => ShellNavigation.MenuItems[2],
+            5 => WorkspaceItem,
+            6 or 7 => PluginsItem,
             8 => SettingsItem,
             9 => AboutItem,
             _ => HomeItem
@@ -434,6 +428,12 @@ public sealed partial class MainPage : Page
         if (section is null) return;
         HomeView.Visibility = section == "home" ? Visibility.Visible : Visibility.Collapsed;
         EnvironmentView.Visibility = section == "environment" ? Visibility.Visible : Visibility.Collapsed;
+        WorkspacesView.Visibility = section == "workspaces" ? Visibility.Visible : Visibility.Collapsed;
+        if (section == "workspaces")
+        {
+            RefreshWorkspaceList();
+            if (WorkspaceDiscoverToggle.IsOn) _ = DiscoverWorkspacesAsync();
+        }
         PluginsView.Visibility = section == "plugins" ? Visibility.Visible : Visibility.Collapsed;
         PacksView.Visibility = section == "packs" ? Visibility.Visible : Visibility.Collapsed;
         LogsView.Visibility = section == "logs" ? Visibility.Visible : Visibility.Collapsed;
@@ -449,7 +449,6 @@ public sealed partial class MainPage : Page
             }
         }
         if (section == "home" && _initialized && !_demoMode) _ = CheckEnvironmentAsync();
-        if (section is "packs" or "environment") RefreshPackManagerUi();
         if (section == "packs" && !_packsLoaded && !_demoMode) _ = RefreshPacksAsync();
         if (section == "docs" && !_demoMode) _ = InitializeDocsBrowserAsync();
     }
@@ -514,7 +513,7 @@ public sealed partial class MainPage : Page
         OpenUrl("https://github.com/zzbuaoye-love");
 
     private void EnvironmentButton_Click(object sender, RoutedEventArgs e)
-        => ShellNavigation.SelectedItem = ShellNavigation.MenuItems[1];
+        => ShellNavigation.SelectedItem = WorkspaceItem;
 
     private void BackdropRadio_Checked(object sender, RoutedEventArgs e)
     {
@@ -571,12 +570,19 @@ public sealed partial class MainPage : Page
         DshVersionStatusText.Text = "正在查询 npm 版本…";
         try
         {
-            var catalog = await DshVersionService.GetAvailableAsync();
+            var registry = await SelectNpmRegistryAsync();
+            DshVersionCatalog catalog;
+            try { catalog = await DshVersionService.GetAvailableAsync(registry.Url); }
+            catch (Exception ex) when (registry != NpmRegistryService.Official && ex is HttpRequestException or TaskCanceledException)
+            {
+                AppendLog("[ADL] 版本列表查询失败，回退 npm 官方源。");
+                catalog = await DshVersionService.GetAvailableAsync();
+            }
             _versionChoicesReady = false;
             DshVersionComboBox.Items.Clear();
             DshVersionComboBox.Items.Add(new ComboBoxItem
             {
-                Content = $"npm 默认发布版 · v{catalog.Latest}", Tag = ""
+                Content = $"默认 · 最新 v{catalog.Latest}", Tag = ""
             });
             foreach (var version in catalog.Versions)
                 DshVersionComboBox.Items.Add(new ComboBoxItem { Content = $"v{version}", Tag = version });
@@ -588,11 +594,9 @@ public sealed partial class MainPage : Page
             DshVersionComboBox.SelectedItem = DshVersionComboBox.Items.OfType<ComboBoxItem>()
                 .First(item => string.Equals(item.Tag as string, _selectedDshVersion, StringComparison.Ordinal));
             _versionChoicesReady = true;
-            DshVersionStatusText.Text = _selectedDshVersion.Length == 0
-                ? $"npm 默认发布版：v{catalog.Latest}。也可锁定上方的预发布版本。"
-                : $"已锁定 v{_selectedDshVersion}；下次启动将使用此版本。";
+            UpdateVersionSelectionUi();
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or FormatException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or FormatException or ArgumentException)
         {
             DshVersionStatusText.Text = $"暂时无法获取版本列表：{ex.Message}；保留当前选择。";
         }
@@ -603,11 +607,11 @@ public sealed partial class MainPage : Page
         if (!_versionChoicesReady || DshVersionComboBox.SelectedItem is not ComboBoxItem choice) return;
         var version = choice.Tag as string ?? "";
         if (version.Length > 0 && !DshVersionService.IsSafeVersion(version)) return;
+        if (_starting || _serviceReady || _service is { HasExited: false } || _activePack is not null) return;
         _selectedDshVersion = version;
-        if (!_demoMode) LauncherSettings.SaveDshVersion(version);
-        DshVersionStatusText.Text = version.Length == 0
-            ? "已选择 npm 默认发布版；下次启动生效。"
-            : $"已锁定 v{version}；下次启动生效。";
+        if (!_demoMode && _workspaceCatalogOverride is null) LauncherSettings.SaveDshVersion(version);
+        SaveWorkspaceConfiguration();
+        UpdateVersionSelectionUi();
     }
 
     private void UpdateNodeModeUi()
@@ -616,7 +620,7 @@ public sealed partial class MainPage : Page
         ManualNodePicker.Visibility = _manualNodeMode ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private async Task CheckEnvironmentAsync()
+    private async Task CheckEnvironmentAsync(bool checkService = true)
     {
         _ = RefreshDesktopClientAsync();
         NodeStatusText.Text = "检测中…";
@@ -646,11 +650,14 @@ public sealed partial class MainPage : Page
             : $"已保存的路径不可用：{_manualNodePath}";
         ToolTipService.SetToolTip(AutoNodePathText, AutoNodePathText.Text);
         ToolTipService.SetToolTip(NodePathText, NodePathText.Text);
-        _dshVersion = FindInstalledDshVersion(WorkspaceTextBox.Text.Trim(), _npxPath);
+        _dshVersion = IsWorkspaceIsolated ? _activePack is { } isolatedPack
+            ? GetWorkspacePackEngine().LoadInstalled().FirstOrDefault(pack => pack.Id == isolatedPack.Id)?.DshVersion
+            : GetWorkspaceRuntimeService().FindCachedVersion() : FindInstalledDshVersion(WorkspaceTextBox.Text.Trim(), _npxPath);
         var installed = _dshVersion is not null;
-        WorkspaceDshText.Text = installed ? $"本机检测到缓存版本 · v{_dshVersion}" : "本机未找到缓存版本，将在启动时获取";
+        WorkspaceDshText.Text = installed ? $"{(IsWorkspaceIsolated ? "此工作区" : "本机")}检测到缓存版本 · v{_dshVersion}"
+            : IsWorkspaceIsolated ? "独立 Harness 尚未安装，将为此工作区单独准备" : "本机未找到缓存版本，将在启动时获取";
 
-        if (!_starting && !_stoppingService)
+        if (checkService && !_starting && !_stoppingService)
         {
             var running = await IsWebServerRespondingAsync();
             if (running)
@@ -704,7 +711,7 @@ public sealed partial class MainPage : Page
         LaunchStepProgressBar.Visibility = Visibility.Collapsed;
         WarningRepairButton.Visibility = showRepairButton ? Visibility.Visible : Visibility.Collapsed;
         EnvironmentWarning.Visibility = Visibility.Visible;
-        ToolTipService.SetToolTip(EnvironmentWarning, message + "。在工作区页面查看详情。");
+        ToolTipService.SetToolTip(EnvironmentWarning, message + "。在运行环境页面查看详情。");
     }
 
     private void ShowLaunchStepTip(string title, string detail, double progress)
@@ -813,7 +820,7 @@ public sealed partial class MainPage : Page
         if (choice == ContentDialogResult.None) return;
         if (choice == ContentDialogResult.Secondary)
         {
-            ShellNavigation.SelectedItem = ShellNavigation.MenuItems[1];
+            ShellNavigation.SelectedItem = EnvironmentItem;
             ManualNodeRadio.IsChecked = true;
             return;
         }
@@ -860,6 +867,7 @@ public sealed partial class MainPage : Page
         _repairingNode = true;
         NodeRepairButton.IsEnabled = false;
         WarningRepairButton.IsEnabled = false;
+        NodeRepairStatusText.Visibility = Visibility.Visible;
         NodeRepairStatusText.Text = "已打开 WinGet；请完成安装程序中的步骤。";
         AppendLog("[ADL] 使用 WinGet 安装或升级 OpenJS.NodeJS.LTS。");
         try
@@ -955,38 +963,17 @@ public sealed partial class MainPage : Page
     {
         PluginsList.Items.Clear();
         _installedPlugins.Clear();
-        PluginsEmptyText.Text = "尚未找到 DSH Web 配置。启动 Web 版后再刷新。";
-        var dshHome = Environment.GetEnvironmentVariable("DSH_HOME");
-        if (string.IsNullOrWhiteSpace(dshHome))
-            dshHome = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh");
-        var manifest = Path.Combine(dshHome, "profiles", "web", "package.json");
+        PluginsEmptyText.Text = "当前 Profile 尚无插件配置。启动后再刷新。";
         try
         {
-            if (File.Exists(manifest))
+            InstalledPluginsTitle.Text = $"{_activePack?.Title ?? "默认工作区"} · {_activePack?.Profile ?? "web"} Profile 插件";
+            foreach (var plugin in PluginProfileService.Load(GetCurrentPluginDirectory()))
             {
-                using var json = JsonDocument.Parse(File.ReadAllText(manifest));
-                var enabled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                if (json.RootElement.TryGetProperty("dsh", out var dsh) &&
-                    dsh.TryGetProperty("profile", out var profile) &&
-                    profile.TryGetProperty("bundles", out var bundles) && bundles.ValueKind == JsonValueKind.Array)
-                    foreach (var bundle in bundles.EnumerateArray())
-                    {
-                        var name = bundle.GetString();
-                        if (string.IsNullOrWhiteSpace(name)) continue;
-                        enabled.Add(name);
-                        _installedPlugins.Add(name);
-                        PluginsList.Items.Add($"{name}   ·   已启用");
-                    }
-                if (json.RootElement.TryGetProperty("dependencies", out var dependencies) && dependencies.ValueKind == JsonValueKind.Object)
-                    foreach (var package in dependencies.EnumerateObject())
-                        if (!enabled.Contains(package.Name))
-                        {
-                            _installedPlugins.Add(package.Name);
-                            if (package.Value.ValueKind == JsonValueKind.String && package.Value.GetString() is { } spec)
-                                _installedPlugins.Add(spec);
-                            PluginsList.Items.Add($"{package.Name}   ·   已安装 · {package.Value.GetString()}");
-                        }
+                _installedPlugins.Add(plugin.Name);
+                if (plugin.IsDependency) _installedPlugins.Add(plugin.InstallSpec);
+                PluginsList.Items.Add(plugin);
             }
+            if (PluginsList.Items.Count == 0) PluginsEmptyText.Text = "当前 Profile 没有已安装的插件。";
         }
         catch (Exception ex)
         {
@@ -995,6 +982,7 @@ public sealed partial class MainPage : Page
         PluginsList.Visibility = PluginsList.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         PluginsEmptyText.Visibility = PluginsList.Items.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
         UpdatePluginDetailState();
+        UpdateRemovalUi();
     }
 
     private void RefreshPluginsButton_Click(object sender, RoutedEventArgs e) => RefreshPlugins();
@@ -1176,7 +1164,10 @@ public sealed partial class MainPage : Page
         var installed = IsPluginInstalled(_selectedPlugin);
         var webCompatible = CanInstallToWeb(_selectedPlugin);
         InstallPluginButton.IsEnabled = !_installingPlugin && !installed && webCompatible && PluginCatalogService.IsSafeInstallSpec(_selectedPlugin.InstallSpec);
-        DetailStatusText.Text = installed ? "已安装在 Web profile。" :
+        RemoveDetailPluginButton.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
+        RemoveDetailPluginButton.IsEnabled = installed && !_installingPlugin && !_packRemoving;
+        InstallPluginButton.Content = $"安装到 {_activePack?.Profile ?? "web"} Profile";
+        DetailStatusText.Text = installed ? $"已安装在 {_activePack?.Profile ?? "web"} Profile。" :
             _installingPlugin ? "正在安装，请等待命令完成。" :
             !webCompatible ? "这是官方其他运行模式的核心 bundle，不适合安装到 Web profile。" :
             !PluginCatalogService.IsSafeInstallSpec(_selectedPlugin.InstallSpec) ? "请打开社区帖子查看安装说明。" :
@@ -1197,7 +1188,7 @@ public sealed partial class MainPage : Page
             return;
         }
         var plugin = _selectedPlugin;
-        if (plugin is null || _installingPlugin || IsPluginInstalled(plugin)) return;
+        if (plugin is null || _installingPlugin || _packRemoving || _packInstalling || _removalConfirming || IsPluginInstalled(plugin)) return;
         if (!CanInstallToWeb(plugin) || !PluginCatalogService.IsSafeInstallSpec(plugin.InstallSpec)) return;
         var npx = _npxPath ?? FindOnPath("npx.cmd");
         if (npx is null)
@@ -1220,10 +1211,11 @@ public sealed partial class MainPage : Page
 
         _installingPlugin = true;
         UpdatePluginDetailState();
+        UpdateRemovalUi();
         AppendLog($"[ADL] 安装插件：{plugin.InstallSpec}");
         try
         {
-            var result = await RunPluginInstallAsync(npx, _nodePath, plugin.InstallSpec);
+            var result = await RunPluginOperationAsync(_nodePath, plugin.InstallSpec, "add");
             AppendLog($"[ADL] 插件安装退出代码：{result.ExitCode}。{result.Output}");
             RefreshPlugins();
             DetailStatusText.Text = result.ExitCode == 0 && IsPluginInstalled(plugin)
@@ -1240,33 +1232,51 @@ public sealed partial class MainPage : Page
         {
             _installingPlugin = false;
             InstallPluginButton.IsEnabled = !IsPluginInstalled(plugin) && CanInstallToWeb(plugin) && PluginCatalogService.IsSafeInstallSpec(plugin.InstallSpec);
+            UpdateRemovalUi();
         }
     }
 
-    private static async Task<(int ExitCode, string Output)> RunPluginInstallAsync(string npx, string? nodePath, string spec)
+    private async Task<(int ExitCode, string Output)> RunPluginOperationAsync(string? nodePath, string spec, string operation)
     {
-        var start = new ProcessStartInfo("cmd.exe")
+        var tools = PackForgeEngineService.ResolveTools(nodePath);
+        var registry = await SelectNpmRegistryAsync();
+        string entry;
+        string profile;
+        string? home = GetDefaultDshHome();
+        if (_activePack is { } pack)
         {
-            Arguments = $"/d /c \"\"{npx}\" --yes @deepseek-ai/dsh plugin --profile web add {spec}\"",
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-        PrependNodeDirectory(start, nodePath);
-        using var process = new Process { StartInfo = start };
-        process.Start();
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        var stderr = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-        try { await process.WaitForExitAsync(timeout.Token); }
-        catch (OperationCanceledException)
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException("安装超过 5 分钟，已停止本次安装命令。");
+            pack = await PrepareWorkspacePackAsync(pack, tools, registry);
+            var start = GetWorkspacePackEngine().CreateLaunchInfo(pack, tools.Node, _configuredWebPort, WorkspaceTextBox.Text.Trim());
+            entry = start.ArgumentList[0];
+            home = start.Environment["DSH_HOME"];
+            profile = pack.Profile;
         }
-        var output = (await stdout + "\n" + await stderr).Trim();
-        return (process.ExitCode, output.Length > 1200 ? output[^1200..] : output);
+        else
+        {
+            var version = _runningDshVersion is { Length: > 0 } running ? running : _selectedDshVersion;
+            if (version.Length == 0) version = await DshVersionService.GetLatestAsync();
+            var runtime = await GetWorkspaceRuntimeService().PrepareAsync(version, tools, registry,
+                line => DispatcherQueue.TryEnqueue(() => AppendLog(line)));
+            entry = runtime.Entry;
+            profile = "web";
+        }
+        var directory = WorkspaceTextBox.Text.Trim();
+        var arguments = new[] { "plugin", "--profile", profile, operation, spec };
+        // Runner starts node directly; the profile/home are supplied to a dedicated child only.
+        await RunPluginCommandAsync(tools.Node, entry, arguments, directory, home, registry);
+        return (0, $"已安装到 Profile {profile}。");
+    }
+
+    private async Task RunPluginCommandAsync(string node, string entry, string[] arguments, string directory, string? home, NpmRegistry registry)
+    {
+        try { await NpmProcessRunner.RunAsync(node, entry, arguments, directory, registry,
+            line => DispatcherQueue.TryEnqueue(() => AppendLog(line)), CancellationToken.None, home, GetWorkspaceEnvironment()?.NpmCache); }
+        catch (Exception ex) when (registry != NpmRegistryService.Official && ex is not OperationCanceledException)
+        {
+            AppendLog("[ADL] 插件依赖下载失败，使用 npm 官方源重试。");
+            await NpmProcessRunner.RunAsync(node, entry, arguments, directory, NpmRegistryService.Official,
+                line => DispatcherQueue.TryEnqueue(() => AppendLog(line)), CancellationToken.None, home);
+        }
     }
 
     private static async Task<string> ReadNodeVersionAsync(string nodePath)
@@ -1334,20 +1344,20 @@ public sealed partial class MainPage : Page
     {
         var path = WorkspaceTextBox.Text.Trim();
         var valid = Directory.Exists(path);
-        var activePath = _activePack?.Workspace ?? path;
+        var activePath = path;
         WorkspaceNameText.Text = Directory.Exists(activePath) ? new DirectoryInfo(activePath).Name : "选择工作区";
         WorkspaceHint.Visibility = valid ? Visibility.Collapsed : Visibility.Visible;
         WorkspaceHint.Text = valid ? "将以这个目录作为 Harness 的默认工作区。" : "请选择已存在的文件夹。";
         WorkspaceHint.Foreground = new SolidColorBrush(valid
             ? Windows.UI.Color.FromArgb(180, 255, 255, 255)
             : Windows.UI.Color.FromArgb(255, 255, 255, 255));
-        if (valid && !_demoMode)
-            LauncherSettings.SaveWorkspace(path);
+        ToolTipService.SetToolTip(WorkspaceTile, path.Length > 0 ? path : "添加项目目录");
     }
 
     private async void BrowseButton_Click(object sender, RoutedEventArgs e)
     {
         if (_demoMode) return;
+        if (WorkspaceChangeBlocked) { WorkspaceManagerStatusText.Text = "请先停止服务并等待当前操作完成，再切换工作区。"; return; }
         var picker = new FolderPicker();
         picker.FileTypeFilter.Add("*");
         WinRT.Interop.InitializeWithWindow.Initialize(
@@ -1355,7 +1365,7 @@ public sealed partial class MainPage : Page
         var folder = await picker.PickSingleFolderAsync();
         if (folder is not null)
         {
-            WorkspaceTextBox.Text = folder.Path;
+            AddWorkspace(folder.Path);
             await CheckEnvironmentAsync();
         }
     }
@@ -1367,6 +1377,11 @@ public sealed partial class MainPage : Page
 
     private async void LaunchButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_installingPlugin || _packRemoving || _removalConfirming)
+        {
+            ServiceStatusText.Text = "请等待插件或整合包操作完成后再启动。";
+            return;
+        }
         if (_demoMode)
         {
             if (_serviceReady)
@@ -1376,6 +1391,18 @@ public sealed partial class MainPage : Page
             return;
         }
         if (_stoppingService) return;
+        if (_launchPreparation is { } preparing)
+        {
+            preparing.Cancel();
+            LaunchButton.IsEnabled = false;
+            AppendLog("[ADL] 正在取消资源准备…");
+            return;
+        }
+        if (!_serviceReady && _service is { HasExited: false })
+        {
+            await StopHarnessAsync();
+            return;
+        }
         if (_serviceReady)
         {
             await StopHarnessAsync();
@@ -1383,13 +1410,22 @@ public sealed partial class MainPage : Page
         }
         if (_service is { HasExited: false } || _starting)
             return;
-        var workspace = _activePack?.Workspace ?? WorkspaceTextBox.Text.Trim();
+        var workspace = WorkspaceTextBox.Text.Trim();
+        if (_missingWorkspacePack)
+        {
+            WorkspaceManagerStatusText.Text = "绑定的整合包不可用，请重新选择整合包或标准 DSH。";
+            ShellNavigation.SelectedItem = WorkspaceItem;
+            return;
+        }
         if (!Directory.Exists(workspace))
         {
             WorkspaceHint.Text = "请先选择已存在的工作目录。";
+            WorkspaceManagerStatusText.Text = WorkspaceHint.Text;
+            ShellNavigation.SelectedItem = WorkspaceItem;
             return;
         }
-        await CheckEnvironmentAsync();
+        AppendLog("[ADL] 检查 Node.js 与工作目录…");
+        await CheckEnvironmentAsync(checkService: false);
         if (_serviceReady)
         {
             ApplyRunningUiState();
@@ -1405,7 +1441,7 @@ public sealed partial class MainPage : Page
         if (!_nodeSupported || (_activePack is null && _npxPath is null))
         {
             AppendLog("[ADL] Node.js 或 npx 未就绪，无法启动。");
-            ShellNavigation.SelectedItem = ShellNavigation.MenuItems[1];
+            ShellNavigation.SelectedItem = EnvironmentItem;
             return;
         }
         if (await IsPortOccupiedAsync(_activeWebPort))
@@ -1416,62 +1452,102 @@ public sealed partial class MainPage : Page
         }
 
         _starting = true;
+        _launchElapsed.Restart();
+        UpdateVersionSelectionUi();
         _runningDshVersion = _activePack?.DshVersion ?? _selectedDshVersion;
         ++_tipsSessionId;
         ShowLaunchStepTip("准备启动", "正在检查 DSH 资源", 12);
         UpdateBranding();
-        LaunchButton.IsEnabled = false;
-        LaunchButton.Content = "启动中…";
+        LaunchButton.IsEnabled = true;
+        LaunchButton.Content = "取消启动";
         ServiceStatusText.Text = _dshVersion is null ? "正在获取 DSH 并启动服务…" : "正在启动 DSH 服务…";
         LaunchProgress.Visibility = Visibility.Visible;
         LaunchProgress.IsActive = true;
         AppendLog($"[ADL] 工作目录：{workspace}");
-        var packageSpec = _selectedDshVersion.Length == 0 ? "@deepseek-ai/dsh" : $"@deepseek-ai/dsh@{_selectedDshVersion}";
-        AppendLog(_activePack is { } pack
-            ? $"[ADL] 启动整合包实例：{pack.Id} · DSH {pack.DshVersion} · Profile {pack.Profile}"
-            : $"[ADL] 运行 npx --yes {packageSpec} web --no-open --port {_activeWebPort}");
-
+        var workspaceEnvironment = GetWorkspaceEnvironment();
+        AppendLog(workspaceEnvironment is null ? "[ADL] 版本隔离：关闭，使用共享 Harness 环境。"
+            : $"[ADL] 版本隔离：开启，只使用此工作区的安装与缓存。环境：{workspaceEnvironment.Root}");
+        using var preparation = new CancellationTokenSource();
+        _launchPreparation = preparation;
         try
         {
-            // The command is fixed; the user-selected path is passed only as WorkingDirectory.
-            var startInfo = _activePack is { } installedPack
-                ? _packEngine.CreateLaunchInfo(installedPack, _nodePath!, _activeWebPort)
-                : new ProcessStartInfo("cmd.exe")
+            var registryTask = SelectNpmRegistryAsync(preparation.Token);
+            Task<string>? latestTask = null;
+            if (_activePack is null && _selectedDshVersion.Length == 0)
             {
-                Arguments = $"/d /c \"\"{_npxPath}\" --yes {packageSpec} web --no-open --port {_activeWebPort}\"",
-                WorkingDirectory = workspace,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
+                AppendLog("[ADL] 默认模式：正在查询 npm 官方 latest 版本…");
+                latestTask = DshVersionService.GetLatestAsync(preparation.Token);
+            }
+            if (latestTask is not null) await Task.WhenAll(registryTask, latestTask);
+            var registry = await registryTask;
+            ProcessStartInfo startInfo;
+            if (_activePack is { } installedPack)
+            {
+                installedPack = await PrepareWorkspacePackAsync(installedPack, PackForgeEngineService.ResolveTools(_nodePath), registry, preparation.Token);
+                var packEngine = GetWorkspacePackEngine();
+                var evidence = packEngine.VerifyActivation(installedPack);
+                AppendLog($"[ADL] 整合包：{installedPack.Id} · DSH {installedPack.DshVersion}（锁定）· Profile {installedPack.Profile}");
+                AppendLog($"[ADL] DSH_HOME：{evidence.Home}；{evidence.Summary}");
+                PackActivationText.Text = "实例检查通过，正在启动 · " + evidence.Summary;
+                startInfo = packEngine.CreateLaunchInfo(installedPack, _nodePath!, _activeWebPort, workspace);
+                NpmRegistryService.Apply(startInfo, registry);
+                if (workspaceEnvironment is not null) startInfo.Environment["npm_config_cache"] = workspaceEnvironment.NpmCache;
+            }
+            else
+            {
+                var version = latestTask is null ? _selectedDshVersion : await latestTask;
+                _runningDshVersion = version;
+                AppendLog($"[ADL] 本次启动 DSH v{version} · {(latestTask is null ? "指定版本，不自动更新" : "已确认官方最新版")}");
+                var tools = PackForgeEngineService.ResolveTools(_nodePath);
+                ShowLaunchStepTip("准备资源", $"正在准备 DSH v{version}，详细信息见日志", 28);
+                var runtime = await GetWorkspaceRuntimeService().PrepareAsync(version, tools, registry,
+                    line => DispatcherQueue.TryEnqueue(() => AppendLog(line)), preparation.Token);
+                startInfo = DshRuntimeService.CreateLaunchInfo(runtime, _nodePath!, workspace, _activeWebPort, registry,
+                    workspaceEnvironment?.Home, workspaceEnvironment?.NpmCache);
+                if (workspaceEnvironment is not null) AppendLog($"[ADL] 独立 DSH_HOME：{workspaceEnvironment.Home}；运行入口：{runtime.Entry}");
+                _dshVersion = runtime.Version;
+                WorkspaceDshText.Text = $"启动器运行时 · v{runtime.Version}";
+            }
+            preparation.Token.ThrowIfCancellationRequested();
             PrependNodeDirectory(startInfo, _nodePath);
-            var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-            process.OutputDataReceived += (_, args) => OnProcessLine(args.Data);
-            process.ErrorDataReceived += (_, args) => OnProcessLine(args.Data);
-            process.Exited += (_, _) => DispatcherQueue.TryEnqueue(() => OnProcessExited(process));
+            AppendLog($"[ADL] 启动本地 DSH · Node {_nodeVersionText} · 端口 {_activeWebPort} · 已耗时 {_launchElapsed.Elapsed.TotalSeconds:F1} 秒");
+            var process = new Process { StartInfo = startInfo };
             process.Start();
             _service = process;
             ShowLaunchStepTip("准备资源", "正在获取或检查 DSH 依赖", 28);
             UpdateBranding();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
+            var output = NpmProcessRunner.DrainAsync(process.StandardOutput, OnProcessLine);
+            var errors = NpmProcessRunner.DrainAsync(process.StandardError, OnProcessLine);
+            process.Exited += async (_, _) =>
+            {
+                try { await Task.WhenAll(output, errors); }
+                finally { DispatcherQueue.TryEnqueue(() => OnProcessExited(process)); }
+            };
+            process.EnableRaisingEvents = true;
+            LaunchButton.Content = "取消启动";
             _ = WatchReadinessAsync(process);
         }
         catch (Exception ex)
         {
             _runningDshVersion = null;
-            AppendLog($"[ADL] 启动失败：{ex.Message}");
-            ServiceStatusText.Text = "启动失败";
+            AppendLog(ex is OperationCanceledException ? "[ADL] 启动已取消。" : $"[ADL] 启动失败：{ex.Message}");
+            ServiceStatusText.Text = ex is OperationCanceledException ? "启动已取消" : "启动失败";
             LaunchProgress.IsActive = false;
             LaunchProgress.Visibility = Visibility.Collapsed;
             LaunchButton.IsEnabled = true;
             LaunchButton.Content = "启动 Web 版";
-            ShowLaunchErrorTip(ex.Message);
+            if (ex is OperationCanceledException)
+            {
+                _launchTipsActive = false;
+                EnvironmentWarning.Visibility = Visibility.Collapsed;
+            }
+            else ShowLaunchErrorTip(ex.Message);
         }
         finally
         {
+            _launchPreparation = null;
             _starting = false;
+            UpdateVersionSelectionUi();
             UpdateBranding();
         }
     }
@@ -1527,6 +1603,7 @@ public sealed partial class MainPage : Page
         OpenWebButton.Visibility = Visibility.Visible;
         OpenPluginManagerButton.IsEnabled = true;
         ServiceStatusText.Text = $"Harness 正在运行 · 端口 {_activeWebPort}";
+        UpdateVersionSelectionUi();
         UpdateBranding();
     }
 
@@ -1540,16 +1617,21 @@ public sealed partial class MainPage : Page
                 ApplyRunningUiState();
                 LaunchProgress.IsActive = false;
                 LaunchProgress.Visibility = Visibility.Collapsed;
-                AppendLog($"[ADL] Web 界面已就绪：{ActiveWebAddress}");
+                AppendLog($"[ADL] Web 界面已就绪：{ActiveWebAddress} · DSH {_runningDshVersion ?? "版本未知"} · 总耗时 {_launchElapsed.Elapsed.TotalSeconds:F1} 秒");
+                if (_activePack is not null) VerifyActivePack_Click(this, new RoutedEventArgs());
                 _ = ShowLaunchCompletedTipAsync();
                 return;
             }
+            if (attempt > 0 && attempt % 5 == 0)
+                AppendLog($"[ADL] 正在等待 Web 服务响应 · 端口 {_activeWebPort} · 已耗时 {_launchElapsed.Elapsed.TotalSeconds:F0} 秒");
             if (attempt == 5 && _launchProgressValue < 55)
                 ShowLaunchStepTip("启动中", "等待 DSH 加载组件", 55);
             await Task.Delay(1000);
         }
         if (ReferenceEquals(_service, process) && !process.HasExited)
         {
+            LaunchButton.IsEnabled = true;
+            LaunchButton.Content = "停止 Web 版";
             ServiceStatusText.Text = "进程运行中，等待服务响应";
             LaunchProgress.IsActive = false;
             LaunchProgress.Visibility = Visibility.Collapsed;
@@ -1626,6 +1708,7 @@ public sealed partial class MainPage : Page
         ServiceStatusText.Text = code == 0 ? "服务已停止" : $"进程退出，代码 {code}";
         LaunchProgress.IsActive = false;
         LaunchProgress.Visibility = Visibility.Collapsed;
+        UpdateVersionSelectionUi();
         AppendLog($"[ADL] Harness 进程已退出（代码 {code}）。");
         if (_launchTipsActive) ShowLaunchErrorTip($"进程退出，代码 {code}。请查看运行日志。");
     }
@@ -1696,6 +1779,7 @@ public sealed partial class MainPage : Page
         {
             _stoppingService = false;
             LaunchButton.IsEnabled = true;
+            UpdateVersionSelectionUi();
         }
     }
 
@@ -1725,13 +1809,21 @@ public sealed partial class MainPage : Page
 
     private void AppendLog(string text)
     {
-        if (_logLines >= 160)
+        text = LaunchLog.Sanitize(text);
+        var stamped = $"[{DateTime.Now:HH:mm:ss}] {text}";
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_sessionLogPath)!);
+            File.AppendAllText(_sessionLogPath, stamped + Environment.NewLine);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        if (_logLines >= 600)
         {
             var lines = LogText.Text.Split('\n');
-            LogText.Text = string.Join("\n", lines.Skip(40));
-            _logLines -= 40;
+            LogText.Text = string.Join("\n", lines.Skip(150));
+            _logLines -= 150;
         }
-        LogText.Text += $"\n{text}";
+        LogText.Text += $"\n{stamped}";
         _logLines++;
         LogScroller.ChangeView(null, LogScroller.ScrollableHeight, null);
     }

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Services/PluginProfileService.cs" Link="PluginProfileService.cs" />
+    <Compile Include="../../Services/PackForgeEngineService.cs" Link="PackForgeEngineService.cs" />
+    <Compile Include="../../Services/DshVersionService.cs" Link="DshVersionService.cs" />
+    <Compile Include="../../Services/NpmRegistryService.cs" Link="NpmRegistryService.cs" />
+    <Compile Include="../../Services/NpmProcessRunner.cs" Link="NpmProcessRunner.cs" />
+  </ItemGroup>
+</Project>

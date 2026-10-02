@@ -1,18 +1,18 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="RuntimeSmoke.cs" />
-    <Compile Include="../../Services/PackForgeEngineService.cs" Link="PackForgeEngineService.cs" />
+    <Compile Include="RuntimeSmoke.cs" />
+    <Compile Include="../../Services/DshRuntimeService.cs" Link="DshRuntimeService.cs" />
     <Compile Include="../../Services/DshVersionService.cs" Link="DshVersionService.cs" />
     <Compile Include="../../Services/NpmRegistryService.cs" Link="NpmRegistryService.cs" />
     <Compile Include="../../Services/NpmProcessRunner.cs" Link="NpmProcessRunner.cs" />
+    <Compile Include="../../Services/PackForgeEngineService.cs" Link="PackForgeEngineService.cs" />
+    <Compile Include="../../Services/LaunchLog.cs" Link="LaunchLog.cs" />
     <Compile Include="../../Services/WorkspaceCatalogService.cs" Link="WorkspaceCatalogService.cs" />
     <Compile Include="../../Services/WorkspaceHarnessEnvironment.cs" Link="WorkspaceHarnessEnvironment.cs" />
-    <Compile Include="../../Services/DshRuntimeService.cs" Link="DshRuntimeService.cs" />
   </ItemGroup>
 </Project>

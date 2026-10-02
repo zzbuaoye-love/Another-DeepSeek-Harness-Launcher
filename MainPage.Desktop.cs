@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using AnotherDSHL.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -26,11 +26,11 @@ public sealed partial class MainPage
 
     private void UpdateHomeLaunchMode()
     {
-        HomePackComboBox.Visibility = _desktopLaunchMode ? Visibility.Collapsed : Visibility.Visible;
         WebLaunchButtons.Visibility = WebStatusPanel.Visibility = WebHomeFooter.Visibility =
             _desktopLaunchMode ? Visibility.Collapsed : Visibility.Visible;
         DesktopHomeButton.Visibility = DesktopHomeStatusText.Visibility =
             _desktopLaunchMode ? Visibility.Visible : Visibility.Collapsed;
+        UpdateVersionSelectionUi();
         if (_initialized) UpdateBranding();
     }
 
